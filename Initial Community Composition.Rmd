@@ -1,0 +1,76 @@
+---
+title: "Initial Biome Composition Analysis"
+author: "Timothy Brennhofer"
+date: "June 12, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(echo = TRUE, warning = TRUE)
+
+#set working directory
+setwd("C:/Users/Timothy Brennhofer/Desktop/KBS REU/KBS Data")
+getwd()
+
+#load necessary packages -- "library" or "require"
+require(tidyverse)
+require(data.table)
+require(rmarkdown)
+require(ggplot2)
+require(dplyr)
+
+#load data
+abun_raw <- fread("2016_10_13_run2_otus.csv")
+abun <- abun_raw
+abun[345,4719] <- 0
+abun <- abun %>%
+  select(-Run, -Day, -Reads) %>%
+  rename(Cage = `Cage#`) %>%
+  gather(otu, abun, -SampleID, -Cage, - Abx, -Dose, -Hour, -Cohoused, -Pair) %>%
+  group_by(SampleID) %>%
+  mutate(abun = abun/sum(abun), otu = as.numeric(otu)) %>%
+  mutate(mouseid = paste(Cage, Abx, sep = "_")) %>%
+  ungroup()
+
+```
+
+
+```{r adding taxonomy}
+
+#Load taxonomical data
+tax <- fread("C:/Users/Timothy Brennhofer/Desktop/KBS REU/KBS Data/otus_table_joined_taxa.txt")
+
+#Organize tax data into traditional classifications
+tax <- tax %>%
+  rename(otu = `#OTU ID`, tax = taxonomy) %>%
+  mutate(tax = gsub("\\s|.__|\\[|\\]|Other", "", tax)) %>%
+  separate(tax, sep = ';', c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species"), fill = 'right')
+tax <- as.data.frame(apply(tax, 2, function(x) ifelse(x == '', 'unclassified', x)), stringsAsFactors = FALSE)
+tax$otu <- as.numeric(tax$otu)
+
+#Join taxonomical data and abundance data
+abun_tax <- left_join(abun, tax, by = 'otu')
+
+```
+
+```{r intital composition data}
+
+#Filter for inital reads and organize by phyla
+abun_tax <- abun_tax %>%
+  filter(Hour == 0) %>%
+  group_by(mouseid, Phylum)
+
+#Create graph to demonstrate initial compositions
+tempz <- abun_tax %>%
+  group_by(mouseid, Phylum) %>%
+  group_by(mouseid) %>%
+  mutate(total = sum(abun))
+
+ggplot(geom_bar(aes(y = total, x = mouseid, fill = Phylum), data = tempz,
+                           stat="identity"))
+
+ggplot(tempz,aes(x = "mouseid", y = "total", fill = "Phylum")) %>%
+  geom_bar (aes(position = "Phylum") )
+
+```
+
