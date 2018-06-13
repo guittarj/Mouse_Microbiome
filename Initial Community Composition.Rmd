@@ -66,8 +66,11 @@ tempz <- abun_tax %>%
   group_by(mouseid) %>%
   mutate(total = sum(abun))
 
-ggplot(tempz, aes(x = mouseid, y = total, fill = Phylum)) +
-  geom_bar()
+ggplot(geom_bar(aes(y = total, x = mouseid, fill = Phylum), data = tempz,
+                           stat="identity"))
+
+ggplot(tempz,aes(x = "mouseid", y = "total", fill = "Phylum")) %>%
+  geom_bar (aes(position = "Phylum") )
 
 ```
 
