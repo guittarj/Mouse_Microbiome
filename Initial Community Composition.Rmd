@@ -10,16 +10,14 @@ knitr::opts_knit$set(root.dir = "C:/Users/Timothy Brennhofer/Desktop/KBS REU/KBS
 
 #set working directory
 require(knitr)
-opts_knit$set(root.dir = "C:/Users/Timothy Brennhofer/Desktop/KBS REU/KBS Data")
-setwd("C:/Users/Timothy Brennhofer/Desktop/KBS REU/KBS Data")
+opts_knit$set(root.dir = "C:/Users/Timothy Brennhofer/Desktop/KBS REU/KBS Data") #I'm not familiar with this approach
+setwd("C:/Users/Timothy Brennhofer/Desktop/KBS REU/KBS Data") #not sure but the spaces ('white spaces') may be messing it up. Or, you may want to add a '\' to the end of the directory. But it's fine just to refer to the file directories directly. 
 getwd()
 
 #load necessary packages -- "library" or "require"
-require(tidyverse)
+require(tidyverse) #this includes ggplot and dplyr - no need to load them separately
 require(data.table)
-require(rmarkdown)
-require(ggplot2)
-require(dplyr)
+
 
 #load data
 abun_raw <- fread("C:/Users/Timothy Brennhofer/Desktop/KBS REU/KBS Data/2016_10_13_run2_otus.csv")
@@ -58,6 +56,7 @@ abun_tax <- left_join(abun, tax, by = 'otu')
 ```{r intital composition data}
 
 #Filter for inital reads and organize by phyla
+#why alter abun_tax permanently?
 abun_tax <- abun_tax %>%
   filter(Hour == 0) %>%
   group_by(mouseid, Phylum)
@@ -68,9 +67,15 @@ tempz <- abun_tax %>%
   filter(abun > .00001) %>%
   mutate(percentabun = paste0(round(100 *abun, 4), "%"))
   
+#Note that this won't do anything; ggplot will plot things alphabetically unless you format the column as a "factor" (google it)
 tempz <- tempz[order(mouseid, Phylum),]
 
 ggplot(tempz, aes(x = mouseid, y = percentabun, fill = Phylum)) +
+  geom_bar(stat = "identity")
+
+#the problem here is that the paste0() function fills the "percentabun"column with "character" values, as opposed to "number" values. Thus, ggplot doesn't know how to plot character-based data in a quantitative way. Why not just:
+
+ggplot(abun_tax, aes(x = mouseid, y = abun, fill = Phylum)) +
   geom_bar(stat = "identity")
 
 ```
