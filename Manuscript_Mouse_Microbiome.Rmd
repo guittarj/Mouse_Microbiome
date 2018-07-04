@@ -1,0 +1,422 @@
+---
+bibliography: C:\\Users\\John\\Documents\\library.bib
+csl: C:\\Users\\John\\Documents\\ecology.csl
+output:
+  bookdown::word_document2:
+    reference_docx: C:\\Users\\John\\Documents\\rmd_style_template_single_spaced.docx
+    toc: no
+  bookdown::html_document2:
+    code_folding: hide
+    fig_caption: yes
+    theme: united
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+```{r setup, include = FALSE}
+
+source('C://Users//John//Documents//initialize_manuscript.R')
+
+```
+
+# Disturbance and recovery of mouse gut microbiota in response to antibiotics.
+
+\newline
+
+John Guittar^1,\*^, Aspen Reese^2^, Lawrence David^3^, Timothy Brennhofer^1,4^, Ashley Shade^5,6^, Elena Litchman^1,6,7^
+
+\newline
+
+^1^ Kellogg Biological Station, Michigan State University, 3700 E Gull Lake Dr, Hickory Corners, MI 49060, USA
+
+^2^ Harvard University, Cambridge, MA 02138, USA
+
+^3^ Department of Molecular Genetics and Microbiology, Duke University, Box 3382, Durham, 11 NC 27708, USA
+
+^4^ Grinnell College, 1115 8th Ave, Grinnell, IA 50112, USA
+
+^5^ Department of Microbiology and Molecular Genetics, Department of Plant, Soil and Microbial Sciences, and The Plant Resilience Institute, Michigan State University, East Lansing MI 48840, USA
+
+^6^ Program in Ecology, Evolutionary Biology and Behavior, Michigan State University East Lansing MI 48840, USA
+
+^7^ Department of Integrative Biology, Michigan State University, East Lansing, MI 48824, USA
+
+^\*^ Correspondence author: E-mail: guittarj@msu.edu
+
+\newline
+
+#Abstract
+
+\newline
+
+#Introduction
+
+* We want to improve our understanding of antibiotic disturbance and recovery in the mammalian gut. 
+* Most work in this area has focused on shifts in abundance at coarse taxonomic scales. We want to look at disturbance and recovery at the OTU scale, in order to more explicitly examine ecological dynamics.
+* One way to better understand ecological mechanisms is to focus on traits. For example, in plant systems, traits related to dispersal ability and rapid growth are often associated with early colonists to distubed areas. Indeed, these traits often form a syndrome characteristic of pioneer species.
+* Colonization of the gut after disturbance my be particularly difficult, because it is an abiotic community with strong impediments to dispersal. Spores have been hypothesized to be a life history trait that enhances the probability of dispersal among hosts.
+
+\newline
+
+##*Questions:*
+
+1. Which traits (other than antibiotic resistance) predict OTU tolerance/susceptibility to antibiotics?
+
+2. Which traits predict recovery after antibiotic disturbances?
+
+3. Which traits predict successful immigration from the regional pool during the recovery process?
+
+`r indent` - Are these traits related to dispersal ability and rapid growth, as expected?
+
+\newline
+
+To answer these questions, we will use data from @Reese2018.
+
+\newline
+
+Another way to frame many of these questions is: can OTU traits help to predict the boxes into which OTUs fall in the following diagram:
+
+![](images/winners_losers.png)
+
+`r ref('figure', 'figOTUFates')`
+
+(ref:figOTUFates) Figure `r refs$figOTUFates`
+
+**(ref:figOTUFates):** The potential fates and fortunes of OTUs in mice treated with antibiotics. Positive outcomes are shaded light green, whereas negative outcomes are shaded light red.
+
+\newline
+
+# Methods
+
+\newline
+
+# Results
+
+```{r, include=FALSE}
+
+# load packages and custom functions
+wd <- 'C:\\Users\\John\\Documents\\msu\\mouse_microbiome\\'
+source(paste0(wd, 'custom_functions.R'))
+loadpax(pkg = c('tidyverse','knitr','data.table','vegan', 'ape'))
+
+#set directory for printed images/figures
+image_dir <- paste0(wd, 'images\\')
+
+# load data
+x_raw <- fread('C:\\Users\\John\\Google Drive\\Mouse_Microbiome_Shared_Files\\Data\\2018_06_12_run2_otus.csv')
+tax <- fread('C:\\Users\\John\\Google Drive\\Mouse_Microbiome_Shared_Files\\Data\\otus_table_joined_taxa.txt')
+
+#Organize tax data into traditional classifications
+tax <- tax %>%
+  rename(otu = `#OTU ID`, tax = taxonomy) %>%
+  mutate(tax = gsub("\\s|.__|\\[|\\]|Other", "", tax)) %>%
+  separate(tax, sep = ';', c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species"), fill = 'right')
+tax <- as.data.frame(apply(tax, 2, function(x) ifelse(x == '', 'unclassified', x)), stringsAsFactors = FALSE)
+tax$otu <- as.numeric(tax$otu)
+
+# Note that, oddly, x[130,4719] is 'NA'. I'm assuming it is zero...?
+x <- as.data.frame(x_raw)
+is.na(x[130,4719])
+x[130,4719] <- 0
+
+#remove samples with fewer than 5000 reads.
+x <- x[rowSums(x[c(11:ncol(x))]) >= 5000, ]
+
+#remove cage 310 because mouse dies
+#x <- x[x$`Cage#` != 310, ]
+
+#ensure all OTUs occur at least once after removing samples
+x <- bind_cols(x[, c(1:10)], x[, c(11:ncol(x))[colSums(x[,c(11:ncol(x))]) > 0]])
+
+#save unrarified version of data?
+x_unrarified <- x
+
+#rarefy to 5000
+tmp <- x[,c(11:ncol(x))]
+tmp <- tmp[rowSums(tmp) >= 5000,]
+tmp <- rrarefy(tmp, 5000)
+x <- bind_cols(x[, c(1:10)], as.data.frame(tmp))
+
+#create wide table for distance calculations
+x <- x %>%
+  mutate(Mouse = floor(SampleID)) %>%
+  select(-Day, -Run, -Reads, -`Cage#`, -SampleID)
+
+#fix data entry problem1
+filt <- x$Mouse == 9 & x$Hour == 168
+x$Cohoused[filt] <- 'Y'
+x$Pair[filt] <- 2
+x$Abx[filt] <- 'N'
+x$Dose[filt] <- 'No'
+
+#fix data entry problem2
+filt <- x$Mouse == 7 & x$Hour == 168
+x$Cohoused[filt] <- 'Y'
+x$Pair[filt] <- 4
+x$Abx[filt] <- 'Y'
+x$Dose[filt] <- 'Recovery'
+
+#save wide table for later
+x_wide <- x
+
+#cleanup, make narrow table
+# I could relativize to a percent here, but why?
+x <- x %>%
+  gather(otu, abun, -Mouse, -Abx, -Hour, -Cohoused, -Dose, -Pair) %>%
+  group_by(Mouse, Abx, Hour, Cohoused, Dose, Pair, otu) %>%
+  summarise(abun = sum(abun)) %>%
+  mutate(otu = as.numeric(otu))
+  
+#set up phyloseq object for UniFrac distances.
+#Want to do it but can't until I make a tree...
+
+#Set plotting theme
+th <- theme_bw() +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.background = element_blank())
+
+```
+
+```{r, include = FALSE}
+
+#####
+#takes too long
+#ord <- metaMDS(x_wide, k = 3, trymax = 1000, noshare = 0.2)
+#####
+
+myp <- select(x_wide, -Mouse, -Abx, -Dose, -Hour, -Cohoused, -Pair)
+myp <- pcoa(vegdist(myp))
+
+j <- data.frame(
+  x_wide[, c('Mouse','Abx','Hour','Pair')], 
+  PCoA1 = myp$vectors[,1],
+  PCoA2 = myp$vectors[,2]) %>%
+  group_by(Mouse) %>%
+  mutate(
+  label = ifelse(Abx == 'Y' & (Hour == min(Hour) | Hour == 120 | Hour == max(Hour)), Hour, NA),
+  Abx = factor(ifelse(Abx == 'Y','Abx', 'No abx'), levels = c('No abx', 'Abx')))
+
+p1 <- j %>% 
+  filter(!is.na(Pair)) %>%
+  mutate(Pair = paste('Cage', Pair)) %>%
+  ggplot(aes(x = PCoA1, y = PCoA2, color = Abx, fill = Abx)) + 
+  geom_point(aes(alpha = Hour), shape = 21, size = 4) + 
+  geom_point(shape = 21, size = 4, fill = NA) + 
+  geom_path() + 
+  geom_text(aes(label = label), color = 'black', na.rm=TRUE) +
+  facet_grid(Pair~Abx) + th
+
+plot_it(p1, name = 'figPCoAPaired', dir = image_dir, width = 7, height = 8)
+
+```
+
+(ref:figPCoAPaired) Figure `r refs$figPCoAPaired`
+
+`r pagebreak` ![](images\\figPCoAPaired.png)
+
+**(ref:figPCoAPaired):** Figure legend.
+
+```{r, include = FALSE}
+
+p2 <- j %>% 
+  filter(is.na(Pair)) %>%
+  group_by(Abx) %>%
+  mutate(Pair2 = as.numeric(as.factor(Mouse))) %>%
+  ggplot(aes(x = PCoA1, y = PCoA2, color = Abx, fill = Abx)) + 
+  geom_point(aes(alpha = Hour), shape = 21, size = 4) + 
+  geom_point(shape = 21, size = 4, fill = NA) + 
+  geom_path() + 
+  geom_text(aes(label = label), color = 'black', na.rm=TRUE) +
+  facet_grid(Pair2~Abx) + th
+
+plot_it(p2, name = 'figPCoASolitary', dir = image_dir, width = 7, height = 8)
+
+```
+
+(ref:figPCoASolitary) Figure `r refs$figPCoASolitary`
+
+`r pagebreak` ![](images\\figPCoASolitary.png)
+
+**(ref:figPCoASolitary):** Figure legend.
+
+
+```{r, include = FALSE}
+
+j <- tax %>% 
+  gather(tax_level, name, -otu) %>% 
+  full_join(x, by = 'otu') %>% 
+  filter(tax_level != 'Domain') %>% 
+  filter(abun > 0)
+
+j <- j %>% 
+  mutate(tax_level = factor(tax_level, levels = c('Phylum','Class','Order','Family','Genus','Species'))) %>%
+  group_by(tax_level) %>% 
+  mutate(total_rich = n_distinct(name)) %>% 
+  group_by(Mouse, tax_level) %>% 
+  mutate(rich = n_distinct(name), val = rich / total_rich)
+
+p1 <- j %>% 
+  ggplot(aes(x = tax_level, y = val, group = Mouse)) + 
+  geom_line() + 
+  expand_limits(y = c(0,1)) +
+  th
+
+plot_it(p1, name = 'figTaxaSharedAcrossMice', dir = image_dir, width = 5, height = 4)
+
+```
+
+(ref:figTaxaSharedAcrossMice) Figure `r refs$figTaxaSharedAcrossMice`
+
+`r pagebreak` ![](images\\figTaxaSharedAcrossMice.png)
+
+**(ref:figTaxaSharedAcrossMice):** Percent of total phyla present within single mice, grouped by taxonomic level. Need to add OTU as a final category. First, I categorize each OTU in each antibiotic treated mouse into *Absent* (never was there), *Extinct* (was there at the end of antibiotic treatment but then disappeared), *Persistent* (was present throughout the experiment), and *Immigrant* (Was absent at the end of AB treatment, but colonized during recover). 
+
+The first plot shows the Hour at which immigrants arrive, plotted by the abundance of that immigrant in the control mouse.
+
+
+```{r, include = FALSE}
+
+#I am assuming that OTUs that are absent from a given mouse in the last two samples collected during antibiotic dosing (i.e., at hours 73 and 97) are not in the mouse. This window can be tweaked.
+
+j <- x %>%
+  group_by(Mouse) %>%
+  filter(Hour >= 63 | Abx == 'N') %>%
+  group_by(Mouse, otu) %>%
+  mutate(
+    abun0 = sum(abun[Hour <= 97]),
+    status0 = if (sum(abun[Hour <= 97]) > 0) 'present' else 'absent',
+    status1 = if (sum(abun[Hour > 97]) > 0) 'present' else 'absent',
+    status = ifelse(status0 == 'absent' & status1 == 'absent', 'absent',
+                    ifelse(status0 == 'absent' & status1 == 'present', 'immigrant',
+                           ifelse(status0 == 'present' & status1 == 'absent', 'extinct',
+                                  'persistent'))),
+    arrival_time = if (status[1] == 'immigrant') min(Hour[Hour > 97 & abun > 0]) else NA) %>%
+  ungroup()
+
+tmp <- j %>%
+  filter(!is.na(Pair)) %>%
+  group_by(Pair, otu) %>%
+  mutate(control_abun = ifelse(Abx == 'Y', unique(abun0[Abx == 'N']), 0))
+
+p <- tmp %>% 
+  filter(status == 'immigrant') %>%
+  #filter(control_abun > 0) %>%
+  mutate(
+    time_to_arrival = arrival_time - 120,
+    control_abun = control_abun * 100 + 0.01) %>%
+  ggplot(aes(x = control_abun, y = time_to_arrival)) + 
+    geom_jitter(alpha = 0.05, color = 'red') + 
+    scale_x_log10() + 
+    stat_smooth(color = 'black', method = 'lm') +
+    stat_smooth(color = 'black', lty = 3) +
+    labs(x = "OTU abundance in cohoused control mouse + 0.1 %", y = 'Hours before OTU arrival in Abx treated mouse') +
+    th
+
+plot_it(p, name = 'figPropPressure', dir = image_dir, width = 6.5, height = 5)
+
+```
+
+
+(ref:figPropPressure) Figure `r refs$figPropPressure`
+
+`r pagebreak` ![](images\\figPropPressure.png)
+
+**(ref:figPropPressure):** Figure legend.
+
+
+```{r, include = FALSE}
+
+#numbers of OTUs, colored by local status
+tmp %>% 
+  filter(Abx == 'Y' & status %in% c('immigrant','persistent') & abun > 0) %>% 
+  mutate(status = as.character(status)) %>%
+  ungroup() %>% 
+  arrange(status) %>% 
+  ggplot(aes(x = factor(Hour), fill = status)) + 
+    geom_bar() + 
+    facet_wrap(~Pair, ncol = 1) +
+    labs(x = "Hour", y = "Number of OTUs") +
+    th
+
+#Relative contribution of OTUs, grouped by local status
+p <- tmp %>%
+  filter(Abx == 'Y' & status %in% c('immigrant','persistent')) %>% 
+  mutate(status = as.character(status)) %>%
+  ungroup() %>% 
+  arrange(status) %>% 
+  ggplot(aes(x = factor(Hour), y = abun, fill = status)) + 
+    geom_bar(stat = 'identity') + 
+    facet_wrap(~Pair, ncol = 1) + 
+    labs(x = "Hour", y = "Relative abundances") +
+    th
+
+plot_it(p, name = 'figImmAbunTime', dir = image_dir, height = 7, width = 5)
+
+```
+
+(ref:figImmAbunTime) Figure `r refs$figImmAbunTime`
+
+`r pagebreak` ![](images\\figImmAbunTime.png)
+
+**(ref:figImmAbunTime):** Figure legend.
+
+
+```{r, include = FALSE}
+
+st <- x %>%
+  group_by(otu, Day = floor(Hour/24)) %>%
+  filter(sum(abun[Abx == 'Y'] > 0) & sum(abun[Abx == 'N'] > 0)) %>%
+  do(mod = t.test(abun~Abx, data = .)) %>%
+  mutate(
+    pval = mod$p.value,
+    df = mod$parameter,
+    tval = mod$statistic,
+    mean_No_Abx = mod$estimate[[1]],
+    mean_Yes_Abx = mod$estimate[[2]],
+    diff = mean_No_Abx - mean_Yes_Abx)
+
+j <- ungroup(st) %>% 
+  group_by(otu) %>% 
+  summarise(sigs = sum(pval < 0.05), sign = sum(diff)) %>% 
+  arrange(desc(abs(sign))) %>%
+  do(data.frame(winners = 
+    head(.$otu[.$sign < 0]),
+    losers = head(.$otu[.$sign > 0]))) %>%
+  gather(status, otu)
+
+p <- x %>%
+  left_join(tax) %>%
+  filter(otu %in% j$otu) %>%
+  mutate(label = paste(Family, 'OTU', as.numeric(as.factor(otu)))) %>%
+  left_join(j) %>%
+  ggplot(aes(x = Hour, y = abun + 1, color = Abx)) + 
+  annotate(geom = 'rect', xmin = 1, xmax = 120, ymin = 0, ymax = Inf, alpha = 0.3, fill = 'red') + 
+  geom_point() + 
+  stat_smooth() +
+  #geom_text(label = "Antibiotics", x = 60, aes(y = max(abun))) +
+  #geom_text(label = "Recovery", x = 216, aes(y = max(abun))) +
+  scale_y_log10() +
+  scale_color_manual(values = c('black','red')) +
+  facet_wrap(~label) + 
+  theme_bw() +
+  theme(
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.background = element_blank(),
+    legend.position = 'bottom')
+
+plot_it(p, name = 'figMostAffectedOTUs', dir = image_dir, width = 9, height = 8)
+
+```
+
+(ref:figMostAffectedOTUs) Figure `r refs$figMostAffectedOTUs`
+
+`r pagebreak` ![](images\\figImmAbunTime.png)
+
+**(ref:figMostAffectedOTUs):** Figure legend.
+
+`r pagebreak` Works Cited
