@@ -17,6 +17,8 @@ output:
 
 ```{r, include=FALSE}
 
+knitr::opts_chunk$set(cache = TRUE)
+
 #initialize manuscript formatting script
 source('C://Users//John//Documents//initialize_manuscript.R')
 
@@ -110,7 +112,9 @@ Another way to frame many of these questions is: can OTU traits help to predict 
 ```{r, include=FALSE}
 
 # load packages and custom functions
-wd <- 'C:\\Users\\John\\Documents\\msu\\mouse_microbiome\\'
+wd <- 'C:\\Users\\John\\Documents\\msu\\Mouse_Microbiome\\'
+setwd(wd)
+
 source(paste0(wd, 'custom_functions.R'))
 loadpax(pkg = c('tidyverse','knitr','data.table','vegan', 'ape'))
 
@@ -484,13 +488,13 @@ p <- x %>%
   mutate(OTU_status = c('Extinct by end of Abx treatment (hour 120 at the latest); does not return during recovery period', 
                         'New colonist, arrived during recovery period (after hour 120)',
                         'Present throughout experiment',
-                        'Extinct during end of Abx treatment (between Hours 63-120); returns during recovery period (after Hour 144')[match(as.numeric(factor(status_recovery, levels = sort(unique(status_recovery)))), c(1:4))],
+                        'Extinct during end of Abx treatment (between Hours 63-120); returns during recovery period (after Hour 144)')[match(as.numeric(factor(status_recovery, levels = sort(unique(status_recovery)))), c(1:4))],
          Pair = paste('Pair', Pair),
          Abx = ifelse(Abx == 'Y', 'Abx', 'No abx')) %>%
   ggplot(aes(x = as.factor(Hour), y = abun, fill = OTU_status)) +
     geom_bar(stat='identity', alpha = 0.8) +
     geom_rect(xmin = 0, xmax = 14, ymin = -100, ymax = 0, fill = 'red', alpha = 0.2) +
-    facet_grid(Abx~Pair) +
+    facet_grid(Pair~Abx) +
     scale_fill_manual(name = '', values = c('#a6611a','#dfc27d','#80cdc1','#018571')) +
     #scale_fill_discrete(name = '') +
     labs(x = 'Hour: {0,4,8,12,16,20,23,25,39,49,63,73,97,120,144,168,192,216,240,312}', y = 'Rarefied abundance') +
@@ -503,7 +507,7 @@ p <- x %>%
       axis.text.x=element_blank(),
       legend.position = 'bottom')
 
-plot_it(p, name = 'figOTUAbunByAbxStatus', dir = image_dir, width = 6.5, height = 5)
+plot_it(p, name = 'figOTUAbunByAbxStatus', dir = image_dir, width = 7, height = 7)
 
 p 
 
@@ -517,8 +521,7 @@ p
 
 ```{r, include = FALSE}
 
-
-x %>%
+p <- x %>%
   ungroup() %>%
   left_join(j[, c('Mouse','otu','status_recovery','immigrant_type')], by = c('Mouse','otu')) %>%
   filter(Abx == 'Y' & abun > 0 & status_recovery != 'absent' & Mouse != 1) %>%
@@ -527,13 +530,13 @@ x %>%
   mutate(OTU_status = c('Extinct by end of Abx treatment (hour 120 at the latest); does not return during recovery period', 
                         'New colonist, arrived during recovery period (after hour 120)',
                         'Present throughout experiment',
-                        'Extinct during end of Abx treatment (between Hours 63-120); returns during recovery period (after Hour 144')[match(as.numeric(factor(status_recovery, levels = sort(unique(status_recovery)))), c(1:4))],
+                        'Extinct during end of Abx treatment (between Hours 63-120); returns during recovery period (after Hour 144)')[match(as.numeric(factor(status_recovery, levels = sort(unique(status_recovery)))), c(1:4))],
          Mouse = paste(ifelse(Cohoused == 'Y', 'Cohoused', 'Not cohoused'), "- Mouse", Mouse),
          Abx = ifelse(Abx == 'Y', 'Abx', 'No abx')) %>%
   ggplot(aes(x = as.factor(Hour), y = abun, fill = OTU_status)) +
     geom_bar(stat='identity', alpha = 0.8) +
     geom_rect(xmin = 0, xmax = 14, ymin = -100, ymax = 0, fill = 'red', alpha = 0.2) +
-    facet_wrap(~Mouse, ncol = 5) +
+    facet_wrap(~Mouse, ncol = 2) +
     scale_fill_manual(name = '', values = c('#a6611a','#dfc27d','#80cdc1','#018571')) +
     #scale_fill_discrete(name = '') +
     labs(x = 'Hour: {0,4,8,12,16,20,23,25,39,49,63,73,97,120,144,168,192,216,240,312}', y = 'Rarefied abundance') +
@@ -546,7 +549,7 @@ x %>%
       axis.text.x=element_blank(),
       legend.position = 'bottom')
 
-plot_it(p, name = 'figOTUAbunByCageStatus', dir = image_dir, width = 6.5, height = 5)
+plot_it(p, name = 'figOTUAbunByCageStatus', dir = image_dir, width = 7, height = 7)
 
 p 
 
@@ -560,7 +563,7 @@ p
 
 ```{r, include = FALSE}
 
-x %>%
+p <- x %>%
   ungroup() %>%
   left_join(j[, c('Mouse','otu','status_recovery','immigrant_type')], by = c('Mouse','otu')) %>%
   filter(!is.na(Pair) & abun > 0 & status_recovery != 'absent') %>%
@@ -569,13 +572,13 @@ x %>%
   mutate(OTU_status = c('Extinct by end of Abx treatment (hour 120 at the latest); does not return during recovery period', 
                         'New colonist, arrived during recovery period (after hour 120)',
                         'Present throughout experiment',
-                        'Extinct during end of Abx treatment (between Hours 63-120); returns during recovery period (after Hour 144')[match(as.numeric(factor(status_recovery, levels = sort(unique(status_recovery)))), c(1:4))],
+                        'Extinct during end of Abx treatment (between Hours 63-120); returns during recovery period (after Hour 144)')[match(as.numeric(factor(status_recovery, levels = sort(unique(status_recovery)))), c(1:4))],
          Pair = paste('Pair', Pair),
          Abx = ifelse(Abx == 'Y', 'Abx', 'No abx')) %>%
   ggplot(aes(x = as.factor(Hour), fill = OTU_status)) +
     geom_bar(alpha = 0.8) +
     geom_rect(xmin = 0, xmax = 14, ymin = -100, ymax = 0, fill = 'red', alpha = 0.2) +
-    facet_grid(Abx~Pair) +
+    facet_grid(Pair~Abx) +
     scale_fill_manual(name = '', values = c('#a6611a','#dfc27d','#80cdc1','#018571')) +
     #scale_fill_discrete(name = '') +
     labs(x = 'Hour: {0,4,8,12,16,20,23,25,39,49,63,73,97,120,144,168,192,216,240,312}', y = 'OTU richness') +
@@ -588,7 +591,7 @@ x %>%
       axis.text.x=element_blank(),
       legend.position = 'bottom')
 
-plot_it(p, name = 'figOTURichByAbxStatus', dir = image_dir, width = 6.5, height = 5)
+plot_it(p, name = 'figOTURichByAbxStatus', dir = image_dir, width = 7, height = 7)
 
 p 
 
@@ -603,7 +606,7 @@ p
 ```{r, include = FALSE}
 
 
-x %>%
+p <- x %>%
   ungroup() %>%
   left_join(j[, c('Mouse','otu','status_recovery','immigrant_type')], by = c('Mouse','otu')) %>%
   filter(Abx == 'Y' & abun > 0 & status_recovery != 'absent' & Mouse != 1) %>%
@@ -612,13 +615,13 @@ x %>%
   mutate(OTU_status = c('Extinct by end of Abx treatment (hour 120 at the latest); does not return during recovery period', 
                         'New colonist, arrived during recovery period (after hour 120)',
                         'Present throughout experiment',
-                        'Extinct during end of Abx treatment (between Hours 63-120); returns during recovery period (after Hour 144')[match(as.numeric(factor(status_recovery, levels = sort(unique(status_recovery)))), c(1:4))],
+                        'Extinct during end of Abx treatment (between Hours 63-120); returns during recovery period (after Hour 144)')[match(as.numeric(factor(status_recovery, levels = sort(unique(status_recovery)))), c(1:4))],
          Mouse = paste(ifelse(Cohoused == 'Y', 'Cohoused', 'Not cohoused'), "- Mouse", Mouse),
          Abx = ifelse(Abx == 'Y', 'Abx', 'No abx')) %>%
   ggplot(aes(x = as.factor(Hour), fill = OTU_status)) +
     geom_bar(alpha = 0.8) +
     geom_rect(xmin = 0, xmax = 14, ymin = -100, ymax = 0, fill = 'red', alpha = 0.2) +
-    facet_wrap(~Mouse, ncol = 5) +
+    facet_wrap(~Mouse, ncol = 2) +
     scale_fill_manual(name = '', values = c('#a6611a','#dfc27d','#80cdc1','#018571')) +
     #scale_fill_discrete(name = '') +
     labs(x = 'Hour: {0,4,8,12,16,20,23,25,39,49,63,73,97,120,144,168,192,216,240,312}', y = 'OTU richness') +
@@ -632,7 +635,7 @@ x %>%
       legend.position = 'bottom')
 
 
-plot_it(p, name = 'figOTURichByCageStatus', dir = image_dir, width = 6.5, height = 5)
+plot_it(p, name = 'figOTURichByCageStatus', dir = image_dir, width = 7, height = 7)
 
 p 
 
