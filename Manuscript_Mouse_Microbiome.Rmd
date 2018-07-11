@@ -15,9 +15,9 @@ output:
       smooth_scroll: yes
 ---
 
-```{r, include=FALSE}
+```{r, include=FALSE, cache = FALSE}
 
-knitr::opts_chunk$set(cache = TRUE)
+knitr::opts_chunk$set(cache = FALSE)
 
 #initialize manuscript formatting script
 source('C://Users//John//Documents//initialize_manuscript.R')
@@ -87,7 +87,7 @@ Another way to frame many of these questions is: can OTU traits help to predict 
 
 (ref:figOTUFates) Figure `r refs$figOTUFates`
 
-**(ref:figOTUFates):** The potential fates and fortunes of OTUs in mice treated with antibiotics. Positive outcomes are shaded light green, whereas negative outcomes are shaded light red.
+**(ref:figOTUFates):** The potential fates and fortunes of OTUs in mice treated with antibiotics. Positive or neutral outcomes are shaded gray, whereas negative outcomes are shaded red.
 
 `r pagebreak`
 
@@ -132,6 +132,10 @@ tax <- tax %>%
   separate(tax, sep = ';', c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species"), fill = 'right')
 tax <- as.data.frame(apply(tax, 2, function(x) ifelse(x == '', 'unclassified', x)), stringsAsFactors = FALSE)
 tax$otu <- as.numeric(tax$otu)
+
+if(FALSE) {
+  saveRDS(tax, file = 'C:\\Users\\John\\Google Drive\\Mouse_Microbiome_Shared_Files\\Data\\Reese2018_OTUs_wide.RDS')
+}
 
 # Note that, oddly, x[130,4719] is 'NA'. I'm assuming it is zero...?
 x <- as.data.frame(x_raw)
@@ -178,6 +182,11 @@ x$Cohoused[x$Mouse == 16 & x$Hour == 168] <- 'N'
 #save wide table for later
 x_wide <- x
 
+if (FALSE) {
+  saveRDS(x_wide, file = 'C:\\Users\\John\\Google Drive\\Mouse_Microbiome_Shared_Files\\Data\\Reese2018_OTUs_wide.RDS')
+}
+
+
 #cleanup, make narrow table
 # I could relativize to a percent here, but why?
 x <- x %>%
@@ -195,6 +204,7 @@ th <- theme_bw() +
     panel.grid.minor = element_blank(),
     panel.grid.major = element_blank(),
     panel.background = element_blank())
+
 
 ```
 
@@ -293,7 +303,7 @@ p1 <- j %>%
   stat_summary(fun.data = "mean_sdl", fun.args = list(mult=1), aes(group = Abx), position = position_dodge(width = 0.2)) +
   scale_color_manual(values = c('black','red')) +
   expand_limits(y = c(0,1)) +
-  labs(x = 'Taxonomic level', y = 'Percent of all Phyla present across all mice')
+  labs(x = 'Taxonomic level', y = 'Percent of all Phyla present across all mice') +
   th
 
 plot_it(p1, name = 'figTaxaSharedAcrossMice', dir = image_dir, width = 5, height = 4)
@@ -475,7 +485,7 @@ p
 
 `r pagebreak` ![](images\\figPropPressure.png)
 
-**(ref:figPropPressure):** A test of the potential role of mass effects. The hypothesis is that, all else being equal, the abundance of a taxon in the regional pool (i.e., the cohoused mouse) is going to correlate positively with time to arrival (i.e., successful colonization) in the treated mouse. This hypothesis is supported. However, we can't be sure if the pattern is because the taxa that are more abundant taxa in the control mouse are simply better suited for the gut environment, and thus are faster to colonize the antibiotic-treated mouse. So, the analysis has it's limitations, but I still think it's worth noting.
+**(ref:figPropPressure):** A test of the potential role of mass effects. The hypothesis is that, all else being equal, the abundance of a taxon in the regional pool (i.e., the cohoused mouse) is going to correlate positively with time to arrival (i.e., successful colonization) in the treated mouse. This hypothesis is supported. However, we can't be sure if the hypothesis is true because the taxa that are more abundant taxa in the control mouse may simply be better suited for the gut environment, and thus are faster to colonize the antibiotic-treated mouse. So, the analysis has it's limitations, but I still think it's worth noting.
 
 ```{r, include = FALSE}
 
@@ -490,10 +500,11 @@ p <- x %>%
                         'Present throughout experiment',
                         'Extinct during end of Abx treatment (between Hours 63-120); returns during recovery period (after Hour 144)')[match(as.numeric(factor(status_recovery, levels = sort(unique(status_recovery)))), c(1:4))],
          Pair = paste('Pair', Pair),
-         Abx = ifelse(Abx == 'Y', 'Abx', 'No abx')) %>%
-  ggplot(aes(x = as.factor(Hour), y = abun, fill = OTU_status)) +
+         Abx = ifelse(Abx == 'Y', 'Abx', 'No abx'))
+
+p <- ggplot(p, aes(x = as.factor(Hour), y = abun, fill = OTU_status)) +
     geom_bar(stat='identity', alpha = 0.8) +
-    geom_rect(xmin = 0, xmax = 14, ymin = -100, ymax = 0, fill = 'red', alpha = 0.2) +
+    geom_rect(xmin = 0, xmax = 14, ymin = -Inf, ymax = 0, fill = 'red', data = filter(p, Abx == 'Abx')) +
     facet_grid(Pair~Abx) +
     scale_fill_manual(name = '', values = c('#a6611a','#dfc27d','#80cdc1','#018571')) +
     #scale_fill_discrete(name = '') +
@@ -507,7 +518,7 @@ p <- x %>%
       axis.text.x=element_blank(),
       legend.position = 'bottom')
 
-plot_it(p, name = 'figOTUAbunByAbxStatus', dir = image_dir, width = 7, height = 7)
+plot_it(p, name = 'figOTUAbunByAbxStatus', dir = image_dir, width = 7, height = 8)
 
 p 
 
@@ -535,7 +546,7 @@ p <- x %>%
          Abx = ifelse(Abx == 'Y', 'Abx', 'No abx')) %>%
   ggplot(aes(x = as.factor(Hour), y = abun, fill = OTU_status)) +
     geom_bar(stat='identity', alpha = 0.8) +
-    geom_rect(xmin = 0, xmax = 14, ymin = -100, ymax = 0, fill = 'red', alpha = 0.2) +
+    geom_rect(xmin = 0, xmax = 14, ymin = -Inf, ymax = 0, fill = 'red') +
     facet_wrap(~Mouse, ncol = 2) +
     scale_fill_manual(name = '', values = c('#a6611a','#dfc27d','#80cdc1','#018571')) +
     #scale_fill_discrete(name = '') +
@@ -549,7 +560,7 @@ p <- x %>%
       axis.text.x=element_blank(),
       legend.position = 'bottom')
 
-plot_it(p, name = 'figOTUAbunByCageStatus', dir = image_dir, width = 7, height = 7)
+plot_it(p, name = 'figOTUAbunByCageStatus', dir = image_dir, width = 7, height = 8)
 
 p 
 
@@ -574,10 +585,11 @@ p <- x %>%
                         'Present throughout experiment',
                         'Extinct during end of Abx treatment (between Hours 63-120); returns during recovery period (after Hour 144)')[match(as.numeric(factor(status_recovery, levels = sort(unique(status_recovery)))), c(1:4))],
          Pair = paste('Pair', Pair),
-         Abx = ifelse(Abx == 'Y', 'Abx', 'No abx')) %>%
-  ggplot(aes(x = as.factor(Hour), fill = OTU_status)) +
+         Abx = ifelse(Abx == 'Y', 'Abx', 'No abx'))
+
+p <- ggplot(p, aes(x = as.factor(Hour), fill = OTU_status)) +
     geom_bar(alpha = 0.8) +
-    geom_rect(xmin = 0, xmax = 14, ymin = -100, ymax = 0, fill = 'red', alpha = 0.2) +
+    geom_rect(xmin = 0, xmax = 14, ymin = -Inf, ymax = 0, fill = 'red', alpha = 0.2, data = filter(p, Abx == 'Abx')) +
     facet_grid(Pair~Abx) +
     scale_fill_manual(name = '', values = c('#a6611a','#dfc27d','#80cdc1','#018571')) +
     #scale_fill_discrete(name = '') +
@@ -591,7 +603,7 @@ p <- x %>%
       axis.text.x=element_blank(),
       legend.position = 'bottom')
 
-plot_it(p, name = 'figOTURichByAbxStatus', dir = image_dir, width = 7, height = 7)
+plot_it(p, name = 'figOTURichByAbxStatus', dir = image_dir, width = 7, height = 8)
 
 p 
 
@@ -601,7 +613,7 @@ p
 
 `r pagebreak` ![](images\\figOTURichByAbxStatus.png)
 
-**(ref:figOTURichByAbxStatus):** OTU richness from communities rarefied to 5000 seqeunces, colored by OTU status. This figure is to compare mice in cohousing environments during the recovery process, with mice caged alone during the recovery process.
+**(ref:figOTURichByAbxStatus):** OTU richness from communities rarefied to 5000 seqeunces, colored by OTU status. This figure is to compare mice treated by antibiotics to untreated mice. 
 
 ```{r, include = FALSE}
 
@@ -620,7 +632,7 @@ p <- x %>%
          Abx = ifelse(Abx == 'Y', 'Abx', 'No abx')) %>%
   ggplot(aes(x = as.factor(Hour), fill = OTU_status)) +
     geom_bar(alpha = 0.8) +
-    geom_rect(xmin = 0, xmax = 14, ymin = -100, ymax = 0, fill = 'red', alpha = 0.2) +
+    geom_rect(xmin = 0, xmax = 14, ymin = -Inf, ymax = 0, fill = 'red') +
     facet_wrap(~Mouse, ncol = 2) +
     scale_fill_manual(name = '', values = c('#a6611a','#dfc27d','#80cdc1','#018571')) +
     #scale_fill_discrete(name = '') +
@@ -635,7 +647,7 @@ p <- x %>%
       legend.position = 'bottom')
 
 
-plot_it(p, name = 'figOTURichByCageStatus', dir = image_dir, width = 7, height = 7)
+plot_it(p, name = 'figOTURichByCageStatus', dir = image_dir, width = 7, height = 8)
 
 p 
 
@@ -703,6 +715,6 @@ p
 
 `r pagebreak` ![](images\\figMostAffectedOTUs.png)
 
-**(ref:figMostAffectedOTUs):** Trends in abundances of 12 taxa that differ significantly between antibiotic treated mice and control mice. The translucent red square shows the window of antibiotic treatment.
+**(ref:figMostAffectedOTUs):** Trends in abundances of 12 taxa that differ significantly between antibiotic treated mice and control mice. The taxa were selected because they exhibited the greatest differences in abundances between treatments. The translucent red square highlights the window of antibiotic treatment.
 
 `r pagebreak` Works Cited
