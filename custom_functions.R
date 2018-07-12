@@ -24,7 +24,7 @@ bac_extract <- function(x, trait) {
   return(x)
 }
 
-bac_search <- function (x) {
+bac_search <- function (x, bacdat = list()) {
   # needs list of genera to search for
   
   #just use the first page of results
@@ -50,6 +50,7 @@ bac_search <- function (x) {
     }
     print(paste("Downloaded", length(urls), "entries for", x[i]))
   }
+  return(bacdat)
 }
 
 
@@ -65,21 +66,49 @@ bac_search_ID <- function (x, bacdat = list()) {
     response <- getURL(url_bacID, userpwd="guittarj@msu.edu:twkYkcJbxCQzEvwkUi", httpauth = 1L)
     bacdat[[i]] <- fromJSON(response)
     
-    prog <- match(i, x)
+    #Print status
+    print(paste("Downloaded", match(i, x), "of", length(x), "entries"))
+    
     if(match(i, x) %% 500 == 0) {
-      
-      #Print status
-      print(paste("Downloaded", match(i, x), "of", length(x), "entries"))
-      
+    
       #save progress
       saveRDS(bacdat, file = paste0('bacdat', match(i, x), '.RDS'))
+      
     }
+  }
+  return(bacdat)
+}
+
+pick_best <- function(x) {
   
+  #to ensure the same random sampling.
+  set.seed(7)
+  
+  # is it numeric?
+  if (is.numeric(x) & sum(!is.na(x)) > 0) {
+    
+    val <- mean(x, na.rm = T)
+    
+    # if not...
+  } else if (!is.numeric(x) & sum(!is.na(x)) > 0) {
+    
+    x <- table(as.character(x))
+    
+    # if values are of equal abundance, random sample
+    if (length(unique(x)) == 1) val <- sample(names(x), 1)
+    # otherwise select maximum value
+    if (length(unique(x)) > 1) val <- names(x)[which.max(x)]
+    
+  } else {
+    
+    val <- NA
+    
   }
   
-  return(bacdat)
-
+  return(val)
+  
 }
+
 
 
 loadpax <- function(pkg){

@@ -9,13 +9,13 @@ library(data.table)
 library(tidyverse)
 
 #load full picrust/greengenes taxonomy
-ggtax <- readRDS(paste0(wd, 'ggtax.RDS'))
+ggtax <- readRDS('ggtax.RDS')
 ggtax <- mutate_all(ggtax, as.character)
 
 #load our OTU data; 
 #determine our taxonomy data (to know which species to focus on while webcrawling, etc)
-otus_wide <- readRDS(paste0(wd, 'Reese2018_OTUs_wide.RDS'))
-tax <- readRDS(paste0(wd, 'Reese2018_OTUs_wide.RDS'))
+otus_wide <- readRDS('Reese2018_OTUs_wide.RDS')
+tax <- readRDS('Reese2018_OTUs_wide.RDS')
 
 ####First: Edits drawn from from Barberan et al 2016 script
 ####Then: my own edits
@@ -207,7 +207,7 @@ ijsem <- select(ijsem, Genus, Species, GC_content = GC,
 ###########################################################
 # now, sporulation data from Browne et al 2016
 
-spo <- read.csv(paste0(wd, 'Browne2016_sporulationTable.csv'), header = T, skip = 1)
+spo <- read.csv('Browne2016_sporulationTable.csv', header = T, skip = 1)
 
 # fix long colnames
 colnames(spo) <- substr(colnames(spo), 1, 2)
@@ -221,14 +221,14 @@ spo <- spo %>%
 
 ####################################### Exploring BacDrive
 
-library(RCurl)
-library(rjson)
-
 if (FALSE) {
+  #IFF i want just the genera in the mouse experiment:
+  library(RCurl)
+  library(rjson)
   
   #needed <- sort(as.character(unique(filter(tax, is.na(Gram_positive))$Genus)))
   needed <- sort(unique(tax$Genus))
-  needed <- needed[!needed %in% c("unclassified","SMB53","02d06","rc4-4","WAL_1855D","1-68","cc_115")]
+  needed <- needed[!needed %in% c("unclassified","SMB53","02d06","rc4-4","WAL_1855D","1-68","cc_115","KD1-23")]
   
   bacdat <- bac_search(needed) #re-calculate bacdata
   saveRDS(bacdat, file = paste0(wd, 'bacdive_genera_', Sys.Date(), '.RDS'))
@@ -237,37 +237,50 @@ if (FALSE) {
 
 if (FALSE) {
   
-  #OR, if you want all bac IDS
+  #OR, if I want all bac IDS: (Note this kept failing halfway through so I no longer recommend it)
+  library(RCurl)
+  library(rjson)
+  
   needed <- read.csv(paste0(wd, 'export_bacdive_ids.csv'), header = FALSE)$V1
+  needed <- needed[c(9515:length(needed))]
   
-  #needed <- needed[c(1:10)]
+  #tmp
+  bacdat <- readRDS('C:\\Users\\John\\Google Drive\\Mouse_Microbiome_Shared_Files\\Data\\bacdat9515.RDS')
   
-  bacdat <- bac_search_ID(needed) #re-calculate bacdata
+  bacdat <- bac_search_ID(needed, bacdat = bacdat) #re-calculate bacdata
   saveRDS(bacdat, file = paste0(wd, 'bacdive_bacIDs_', Sys.Date(), '.RDS'))
   
 } 
 
-bacdat <- readRDS(paste0(wd, 'bacdat9016.RDS')) #load bacdata
+bacdat <- readRDS('bacdive_genera_2018-07-12.RDS') #load bacdata
           
-#taxonomic info
-#tax_bacdat <- sapply(bacdat, function(x)
-#  sapply(x, function(y)
-#    sapply(y$taxonomy_name$strains_tax_PNU, function(sp) sp$species_epithet)))
-
-na.pad <- function(x) ifelse(is.null(x), NA, x)
+if (FALSE) {
+  #taxonomic info
+  tax_bacdat <- sapply(bacdat, function(x)
+    sapply(x, function(y)
+      sapply(y$taxonomy_name$strains_tax_PNU, function(sp) sp$species_epithet)))
   
-names(bacdat) <- paste0('bacID', needed[1:10])
-tax_bacdat <- lapply(bacdat, function(x)
-  with(x$taxonomy_name$strains_tax_PNU[[1]], 
-       data.frame(Phylum = na.pad(phylum), 
-                  Class = na.pad(class), 
-                  Order = na.pad(ordo),
-                  Family = na.pad(family),
-                  Genus = na.pad(genus),
-                  Species = na.pad(species_epithet),
-                  NCBI_ID = na.pad(x$molecular_biology$sequence[[1]]$NCBI_tax_ID))))
-
-tax_bacdat <- rbind_list(tax_bacdat)
+  
+  na.pad <- function(x) ifelse(is.null(x), NA, x)
+    
+  names(bacdat) <- paste0('bacID', 1:length(bacdat))
+  tax_bacdat <- lapply(bacdat, function(x)
+    with(x$taxonomy_name$strains_tax_PNU[[1]], 
+         data.frame(Phylum = na.pad(phylum), 
+                    Class = na.pad(class), 
+                    Order = na.pad(ordo),
+                    Family = na.pad(family),
+                    Genus = na.pad(genus),
+                    Species = na.pad(species_epithet),
+                    NCBI_ID = na.pad(x$molecular_biology$sequence[[1]]$NCBI_tax_ID))))
+  
+  tax_bacdat <- rbind_list(tax_bacdat)
+  
+  #taxonomic info
+  bacdat_phylum <- sapply(bacdat, function(x)
+    sapply(x, function(y)
+      sapply(y$taxonomy_name$strains_tax_PNU, function(sp) sp$phylum)))
+}
 
 #oxygen tolerance
 o2 <- sapply(bacdat, function(genus) 
@@ -331,7 +344,7 @@ bd <- mutate_if(bd, is.factor, as.character)
 ###############################
 
 ## Genome size, GC content, and Gene Number from NCBI...
-genos <- fread('bigdata_unsynced\\NCBI_prokaryotes.txt') %>% 
+genos <- fread('NCBI_prokaryotes.txt') %>% 
   filter(Status == 'Complete Genome') %>%
   transmute(
     sp = gsub("'|\\[|\\]", "", `Organism/Name`),
@@ -347,7 +360,7 @@ genos <- fread('bigdata_unsynced\\NCBI_prokaryotes.txt') %>%
 ####################
 # 16s gene copy numbers from rrnDB
 
-rrnDB <- read.csv('data//rrnDB-5.3.csv') %>%
+rrnDB <- read.csv('rrnDB-5.3.csv') %>%
   mutate(
     sp = gsub("'|\\[|\\]", "", NCBI.scientific.name),
     Genus = sapply(sapply(sp, strsplit, ' '), function(x) x[[1]]),
@@ -358,7 +371,7 @@ rrnDB <- read.csv('data//rrnDB-5.3.csv') %>%
   mutate(Species = ifelse(is.na(Species), 'unclassified', Species))
 
 ################ IgA
-iga <- read.csv('data\\Palm2014_IGA.csv', stringsAsFactors = FALSE)
+iga <- read.csv('Palm2014_IGA.csv', stringsAsFactors = FALSE)
 iga <- t(iga)
 colnames(iga) <- iga[1, ]
 iga <- as.data.frame(iga[c(2:nrow(iga)), ])
@@ -376,7 +389,7 @@ iga <- iga %>%
 
 #################
 #b-vitamins
-bvit <- read.csv('data\\Bvitamins_Magnusdottir2015.csv', stringsAsFactors = FALSE) %>%
+bvit <- read.csv('Bvitamins_Magnusdottir2015.csv', stringsAsFactors = FALSE) %>%
   mutate(Genus = sapply(sapply(tax, strsplit, ' '), function(x) x[[1]]),
          Species = sapply(sapply(tax, strsplit, ' '), function(x) x[[2]])) %>%
   mutate(Species = ifelse(Species == 'sp.', 'unclassified', Species)) %>%
@@ -393,7 +406,7 @@ bvit <- read.csv('data\\Bvitamins_Magnusdottir2015.csv', stringsAsFactors = FALS
 # ftp://greengenes.microbio.me/greengenes_release/gg_13_5/gg_13_5_accessions.txt.gz
 # NCBI ID to genbank accession (a huge file):
 # ftp://ftp.ncbi.nih.gov/pub/taxonomy/accession2taxid/ # not sure which one
-jgi <- fread("bigdata_unsynced\\GOLD-328_Organism_Metadata_02232018.txt")
+jgi <- fread("GOLD-328_Organism_Metadata_02232018.txt", quote = "")
 
 #remove duplicate oxygen column
 jgi <- jgi[, -9]
@@ -667,7 +680,9 @@ if (FALSE) {
 x <- x %>%
   spread(trait, val) %>%
   inner_join(ggtax[, c('Genus','Species','otu')], by = c('Genus', 'Species')) %>%
+  mutate(otu = gsub('otu', '', otu)) %>%
   filter(Species != 'unclassified' | otu %in% tax$otu)
+
 
 # Add a last minute manual entry
 #https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3346390/
@@ -680,13 +695,12 @@ x <- x %>%
     Sporulation = ifelse(is.na(Spore_score), 
                          ifelse(Spore < 0.5, 0, median(Spore_score[tax$Spore > 0], na.rm = T)), Spore_score)) %>%
   ungroup() %>%
-  select(-Spore, -Spore_score, -Genus, -Species) %>%
-  select(otu, everything())
+  select(-Spore, -Spore_score)
 
 #add bugbase trait preditions
-bugdat <- fread('data\\default_traits_precalculated_bugbase.txt') %>%
-  rename(otu = V1) %>%
-  mutate(otu = paste0('otu',otu))
+bugdat <- fread('default_traits_precalculated_bugbase.txt') %>%
+  mutate(otu = as.character(V1), V1 = NULL)
+  
 
 x <- full_join(x, bugdat, by = 'otu')
 
@@ -711,7 +725,7 @@ x <- x %>%
     Obligate_anaerobe = Anaerobic,
     Forms_biofilms = Forms_Biofilms)
 
-saveRDS(x, file = 'data\\traits_sparse.RDS')
+saveRDS(x, file = 'traits_sparse.RDS')
 
 #rm(list = ls())
 

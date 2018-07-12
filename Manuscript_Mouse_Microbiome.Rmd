@@ -113,6 +113,7 @@ Another way to frame many of these questions is: can OTU traits help to predict 
 
 # load packages and custom functions
 wd <- 'C:\\Users\\John\\Documents\\msu\\Mouse_Microbiome\\'
+wd_dat <- 'C:\\Users\\John\\Google Drive\\Mouse_Microbiome_Shared_Files\\Data\\'
 setwd(wd)
 
 source(paste0(wd, 'custom_functions.R'))
@@ -122,9 +123,11 @@ loadpax(pkg = c('tidyverse','knitr','data.table','vegan', 'ape'))
 image_dir <- paste0(wd, 'images\\')
 
 # load data
-x_raw <- fread('C:\\Users\\John\\Google Drive\\Mouse_Microbiome_Shared_Files\\Data\\2018_06_12_run2_otus.csv')
-tax <- fread('C:\\Users\\John\\Google Drive\\Mouse_Microbiome_Shared_Files\\Data\\otus_table_joined_taxa.txt')
-
+x_raw <- fread(paste0(wd_dat, '2018_06_12_run2_otus.csv'))
+tax <- fread(paste0(wd_dat, 'otus_table_joined_taxa.txt'))
+traits <- readRDS(paste0(wd_dat, 'traits_castor_subtree_averaging.RDS')) %>%
+  mutate(otu = as.integer(gsub('otu', '', otu)))
+ 
 #Organize tax data into traditional classifications
 tax <- tax %>%
   rename(otu = `#OTU ID`, tax = taxonomy) %>%
@@ -195,6 +198,12 @@ x <- x %>%
   summarise(abun = sum(abun)) %>%
   mutate(otu = as.numeric(otu))
   
+
+#filter so trait table has only the same taxa.
+#create wide version
+traits <- filter(traits, otu %in% x$otu)
+traits_wide <- spread(traits, trait, val, fill = NA)
+
 #set up phyloseq object for UniFrac distances.
 #Want to do it but can't until I make a tree...
 
@@ -716,5 +725,34 @@ p
 `r pagebreak` ![](images\\figMostAffectedOTUs.png)
 
 **(ref:figMostAffectedOTUs):** Trends in abundances of 12 taxa that differ significantly between antibiotic treated mice and control mice. The taxa were selected because they exhibited the greatest differences in abundances between treatments. The translucent red square highlights the window of antibiotic treatment.
+
+```{r, include = FALSE}
+
+
+iwant <- c('Copies_16S','Forms_biofilms','Gene_number','Obligate_anaerobe','Sporulation')
+
+tmp <- x %>%
+  left_join(traits_wide[ ,c('otu', iwant)], by = 'otu') %>%
+  gather(trait, val, .dots = iwant) %>%
+  group_by(Mouse, Abx, Cohoused, Hour, trait) %>%
+  filter(Cohoused != 'dead') %>%
+  summarise(CWM = weighted.mean(val, w = abun)) %>%
+  ungroup() %>%
+  mutate(Abx = ifelse(Abx == 'Y', 'Abx', 'No abx'),
+         Cohoused = ifelse(Cohoused == 'Y', 'Cohoused', 'Solitary'))
+
+ggplot(tmp, aes(x = Hour, y = CWM, color = Abx)) +
+    geom_rect(aes(xmin = 0, xmax = 120, ymin = -Inf, ymax = Inf), alpha = 0.3, fill = 'red', color = NA, data =  group_by(tmp, trait, Abx) %>% filter(row_number() == 1 & Abx == 'Abx')) +
+    stat_smooth(aes(group = Abx), se = FALSE, size = 1.5) +
+    stat_smooth(aes(lty = Cohoused, group = Mouse), geom="line", se = FALSE, alpha = 0.6) +
+    scale_color_manual(values = c('red','black'), name = '') +
+    scale_linetype_discrete(name = '') +
+    facet_grid(trait~Abx, scales = 'free') +
+    guides(lty=guide_legend(override.aes = list(color = 'black'))) +
+    th
+  
+
+```
+
 
 `r pagebreak` Works Cited
