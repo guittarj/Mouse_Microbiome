@@ -196,13 +196,16 @@ x <- x %>%
   gather(otu, abun, -Mouse, -Abx, -Hour, -Cohoused, -Dose, -Pair) %>%
   group_by(Mouse, Abx, Hour, Cohoused, Dose, Pair, otu) %>%
   summarise(abun = sum(abun)) %>%
-  mutate(otu = as.numeric(otu))
+  mutate(otu = as.numeric(otu)) %>%
+  group_by(otu) %>%
+  filter(sum(abun) > 0) %>%
+  ungroup()
   
-
-#filter so trait table has only the same taxa.
+#filter so trait and tax tables have the same taxa.
 #create wide version
 traits <- filter(traits, otu %in% x$otu)
 traits_wide <- spread(traits, trait, val, fill = NA)
+tax <- filter(tax, otu %in% x$otu)
 
 #set up phyloseq object for UniFrac distances.
 #Want to do it but can't until I make a tree...
@@ -213,6 +216,20 @@ th <- theme_bw() +
     panel.grid.minor = element_blank(),
     panel.grid.major = element_blank(),
     panel.background = element_blank())
+
+#set trait names for plotting
+#renaming
+trait_names <- c(
+  "B_vitamins" = "B vitamins",
+  "Copies_16S" = "16S gene copies",
+  "Forms_biofilms" = "Forms biofilms",
+  "GC_content" = "GC content",
+  "Gene_number" = "Genes",
+  "Gram_positive" = "Gram-positive",
+  "IgA" = "IgA binding affinity",
+  "Obligate_anaerobe" = "Obligate anaerobe",
+  "Temp_optimum" = "Temperature optimum"
+)
 
 
 ```
@@ -728,7 +745,6 @@ p
 
 ```{r, include = FALSE}
 
-
 iwant <- c('Copies_16S','Forms_biofilms','Gene_number','Obligate_anaerobe','Sporulation')
 
 tmp <- x %>%
@@ -741,18 +757,124 @@ tmp <- x %>%
   mutate(Abx = ifelse(Abx == 'Y', 'Abx', 'No abx'),
          Cohoused = ifelse(Cohoused == 'Y', 'Cohoused', 'Solitary'))
 
-ggplot(tmp, aes(x = Hour, y = CWM, color = Abx)) +
+p <- ggplot(tmp, aes(x = Hour, y = CWM, color = Abx)) +
     geom_rect(aes(xmin = 0, xmax = 120, ymin = -Inf, ymax = Inf), alpha = 0.3, fill = 'red', color = NA, data =  group_by(tmp, trait, Abx) %>% filter(row_number() == 1 & Abx == 'Abx')) +
     stat_smooth(aes(group = Abx), se = FALSE, size = 1.5) +
     stat_smooth(aes(lty = Cohoused, group = Mouse), geom="line", se = FALSE, alpha = 0.6) +
     scale_color_manual(values = c('red','black'), name = '') +
     scale_linetype_discrete(name = '') +
     facet_grid(trait~Abx, scales = 'free') +
-    guides(lty=guide_legend(override.aes = list(color = 'black'))) +
+    guides(lty=guide_legend(override.aes = list(color = 'black', alpha = 1))) +
     th
-  
+
+plot_it(p, name = 'figFiveTraitPatterns', dir = image_dir, width = 6, height = 7.5)
+
+p
 
 ```
+
+(ref:figFiveTraitPatterns) Figure `r refs$figFiveTraitPatterns`
+
+`r pagebreak` ![](images\\figFiveTraitPatterns.png)
+
+**(ref:figFiveTraitPatterns):** Shifts in community weighted means of mouse gut microbial communities during and after antibiotic treatment (left) or in untreated control mice (right). Thick colored lines show average CWM trait values across mice, whereas thin colored lines show CWM trends for individual mice.
+
+```{r, include = FALSE}
+
+ggtax <- readRDS(paste0(wd_dat, 'ggtax.RDS')) %>%
+  mutate(otu = as.integer(gsub('otu', '', otu)))
+
+tmp <- traits_wide %>%
+  gather(trait, val, -otu) %>%
+  filter(!is.na(val)) %>%
+  left_join(ggtax, by = 'otu') %>%
+  filter(Species != 'unclassified')
+
+tmp_abuns <- x %>% ungroup() %>% group_by(otu) %>% summarise(abun = sum(abun))  
+
+#I drop traits that are already dependent on inferred trait data, from Bugbase
+j <- traits_wide %>%
+  select(-Forms_biofilms, -Obligate_anaerobe, -Gram_positive) %>%
+  gather(trait, val, -otu) %>%
+  distinct(otu, trait) %>%
+  inner_join(tax, by = 'otu') %>%
+  mutate(
+    Species = paste(trait, Family, Genus, Species) %in% paste(tmp$trait, tmp$Family, tmp$Genus, tmp$Species),
+    Genus = paste(trait, Family, Genus) %in% paste(tmp$trait, tmp$Family, tmp$Genus),
+    Family = paste(trait, Family) %in% paste(tmp$trait, tmp$Family),
+    Order = paste(trait, Order) %in% paste(tmp$trait, tmp$Order),
+    Class = paste(trait, Class) %in% paste(tmp$trait, tmp$Class)
+  ) %>%
+  rename(C = Class, O = Order, F = Family, G = Genus, S = Species) %>%
+  gather(level, coverage, C, O, F, G, S) %>%
+  inner_join(tmp_abuns, by = 'otu') %>%
+  mutate(level = factor(level, levels = rev(c('C','O','F','G','S')))) %>%
+  group_by(trait, level)
+
+# individuals with trait data by trait and level
+#j %>% 
+#  group_by(trait, level) %>% 
+#  summarise(abun = sum(abun[coverage])) %>%
+#  spread(level, abun)
+
+#percent individuals with trait data by trait and level
+#j %>% 
+#  group_by(trait, level) %>% 
+#  summarise(abun = round(sum(abun[coverage]) / sum(abun), 2)) %>%
+#  spread(level, abun)
+
+# summary across traits
+#j %>% 
+#  group_by(level) %>% 
+#  summarise(abun = sum(abun[coverage])) %>%
+#  mutate(abun_percent = abun / max(abun))
+
+# numbers of OTUs with trait data by trait and level
+#j %>% 
+#  group_by(trait, level) %>% 
+#  summarise(rich = sum(coverage)) %>%
+#  spread(level, rich)
+
+# numbers of OTUs with trait data by level
+#j %>% 
+#  group_by(trait, level) %>% 
+#  summarise(rich = round(sum(coverage) / length(coverage), 2)) %>%
+#  spread(level, rich)
+
+# summary across traits
+#j %>% 
+#  group_by(level) %>% 
+#  summarise(rich = sum(coverage)) %>%
+#  mutate(rich_percent = rich / max(rich))
+
+p <- j %>%
+  summarise(coverage = sum(abun[coverage]) / sum(abun)) %>%
+  filter(trait %in% iwant) %>%
+  ungroup() %>%
+  mutate(trait = ifelse(trait %in% names(trait_names), trait_names[match(trait, names(trait_names))], trait)) %>%
+  ggplot(aes(x = level, y = coverage)) +
+    geom_bar(stat = 'identity') +
+    facet_wrap(~trait) +
+    theme_bw() +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.grid.major = element_blank(),
+      panel.background = element_blank(),
+      legend.position = 'none') +
+    labs(x = 'Maximum level of phylogenetic distance allowed when inferring trait data', y = 'Proportion of community with available trait data')
+
+plot_it(p, name = 'figCoverage', dir = image_dir, width = 6, height = 3.5)
+
+p
+
+```
+
+(ref:figCoverage) Figure `r refs$figCoverage`
+
+`r pagebreak` ![](images\\figCoverage.png)
+
+**(ref:figCoverage):** 
+Unknown trait data were inferred by averaging trait values over descending subtrees in the greengenes phylogeny. That is, for each unknown trait value, the predicted value was set to the arithmetic average state of all tips descending from that node. On the x-axis, S = Species, G = Genus, F = Family, O = Order, C = Class. Missing trait data for three traits (the functional potential to form biofilms, obgligate anaerobe status, and Gram-positive status) were inferred for all OTUs in the greengenes phylogeny in Ward et al. 2017, and are therefore not reported in this figure.
 
 
 `r pagebreak` Works Cited
