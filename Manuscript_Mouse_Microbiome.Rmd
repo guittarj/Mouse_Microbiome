@@ -66,6 +66,7 @@ John Guittar^1,\*^, Aspen Reese^2^, Lawrence David^3^, Timothy Brennhofer^1,4^, 
 ##*Questions:*
 
 1. Which traits (other than antibiotic resistance) predict OTU tolerance/susceptibility to antibiotics?
+ + Can they explain differential microbiome community responses to antibiotics?
 
 2. Which traits predict recovery after antibiotic disturbances?
 
@@ -236,18 +237,25 @@ trait_names <- c(
 
 ```{r, include = FALSE}
 
+
+tmp <- select(x_wide, -Mouse, -Abx, -Dose, -Hour, -Cohoused, -Pair)
+
 #####
-#takes too long
-#ord <- metaMDS(x_wide, k = 3, trymax = 1000, noshare = 0.2)
+#doesn't easily converge... but based on a quick test the results don't differ too much.
+ord <- metaMDS(tmp)
+ord_scores <- as.data.frame(scores(ord))
 #####
 
-myp <- select(x_wide, -Mouse, -Abx, -Dose, -Hour, -Cohoused, -Pair)
-myp <- pcoa(vegdist(myp))
+
+myp <- pcoa(vegdist(tmp))
+# to see how much of
 
 j <- data.frame(
   x_wide[, c('Mouse','Abx','Hour','Pair')], 
   PCoA1 = myp$vectors[,1],
-  PCoA2 = myp$vectors[,2]) %>%
+  PCoA2 = myp$vectors[,2],
+  NMDS1 = ord_scores$NMDS1,
+  NMDS2 = ord_scores$NMDS2) %>%
   group_by(Mouse) %>%
   mutate(
   label = ifelse(Abx == 'Y' & (Hour == min(Hour) | Hour == 120 | Hour == max(Hour)), Hour, NA),
@@ -257,6 +265,19 @@ p1 <- j %>%
   filter(!is.na(Pair)) %>%
   mutate(Pair = paste('Cage', Pair)) %>%
   ggplot(aes(x = PCoA1, y = PCoA2, color = Abx, fill = Abx)) + 
+  geom_point(aes(alpha = Hour), shape = 21, size = 4) + 
+  geom_point(shape = 21, size = 4, fill = NA) + 
+  geom_path() + 
+  geom_text(aes(label = label), color = 'black', na.rm=TRUE) +
+  scale_color_manual(values = c('black','red')) +
+  scale_fill_manual(values = c('black','red')) +
+  facet_grid(Pair~Abx) + 
+  th
+
+p2 <- j %>% 
+  filter(!is.na(Pair)) %>%
+  mutate(Pair = paste('Cage', Pair)) %>%
+  ggplot(aes(x = NMDS1, y = NMDS2, color = Abx, fill = Abx)) + 
   geom_point(aes(alpha = Hour), shape = 21, size = 4) + 
   geom_point(shape = 21, size = 4, fill = NA) + 
   geom_path() + 
@@ -745,7 +766,7 @@ p
 
 ```{r, include = FALSE}
 
-iwant <- c('Copies_16S','Forms_biofilms','Gene_number','Obligate_anaerobe','Sporulation')
+iwant <- c('Obligate_anaerobe','Sporulation')
 
 tmp <- x %>%
   left_join(traits_wide[ ,c('otu', iwant)], by = 'otu') %>%
@@ -767,7 +788,7 @@ p <- ggplot(tmp, aes(x = Hour, y = CWM, color = Abx)) +
     guides(lty=guide_legend(override.aes = list(color = 'black', alpha = 1))) +
     th
 
-plot_it(p, name = 'figFiveTraitPatterns', dir = image_dir, width = 6, height = 7.5)
+plot_it(p, name = 'figFiveTraitPatterns', dir = image_dir, width = 6, height = 6)
 
 p
 
