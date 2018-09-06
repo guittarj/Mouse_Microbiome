@@ -3,24 +3,18 @@
 bac_extract <- function(x, trait) {
   
   # for each species query result, filter blanks and pick best value
-  for(i in 1:length(tax_bacdat)) {
-    names(x[[i]]) <- tax_bacdat[[i]]
-    x[[i]] <- x[[i]][sapply(x[[i]], length) > 0]
-    x[[i]] <- sapply(x[[i]], pick_best)
-  }
-  
-  # unlist, clean, return df
+  x <- lapply(x, unlist)
+  x <- lapply(x, pick_best)
   x <- unlist(x)
-  x[x == 'NULL'] <- NA
-  x_names <- strsplit(names(x), '.', fixed = TRUE)
+  x <- x[!is.na(x)]
   x <- data.frame(
-    Genus = sapply(x_names, function(y) y[[1]]),
-    Species = sapply(x_names, function(y) y[[2]]),
+    Genus = tax_bacdat$Genus[match(names(x), tax_bacdat$id)], 
+    Species = tax_bacdat$Species[match(names(x), tax_bacdat$id)],
     trait = trait,
-    val = x
+    val = x,
+    row.names = NULL,
+    stringsAsFactors = FALSE
   )
-  x <- x[!is.na(x$val), ]
-  x$val <- as.character(x$val)
   return(x)
 }
 

@@ -28,7 +28,7 @@ source('C://Users//John//Documents//initialize_manuscript.R')
 
 \newline
 
-John Guittar^1,\*^, Aspen Reese^2^, Lawrence David^3^, Timothy Brennhofer^1,4^, Ashley Shade^5,6^, Elena Litchman^1,6,7^
+John Guittar^1,\*^, Aspen Reese^2^, Lawrence David^3^, Ashley Shade^5,6^, Elena Litchman^1,6,7^
 
 \newline
 
@@ -38,13 +38,11 @@ John Guittar^1,\*^, Aspen Reese^2^, Lawrence David^3^, Timothy Brennhofer^1,4^, 
 
 ^3^ Department of Molecular Genetics and Microbiology, Duke University, Box 3382, Durham, 11 NC 27708, USA
 
-^4^ Grinnell College, 1115 8th Ave, Grinnell, IA 50112, USA
+^4^ Department of Microbiology and Molecular Genetics, Department of Plant, Soil and Microbial Sciences, and The Plant Resilience Institute, Michigan State University, East Lansing MI 48840, USA
 
-^5^ Department of Microbiology and Molecular Genetics, Department of Plant, Soil and Microbial Sciences, and The Plant Resilience Institute, Michigan State University, East Lansing MI 48840, USA
+^5^ Program in Ecology, Evolutionary Biology and Behavior, Michigan State University East Lansing MI 48840, USA
 
-^6^ Program in Ecology, Evolutionary Biology and Behavior, Michigan State University East Lansing MI 48840, USA
-
-^7^ Department of Integrative Biology, Michigan State University, East Lansing, MI 48824, USA
+^6^ Department of Integrative Biology, Michigan State University, East Lansing, MI 48824, USA
 
 ^\*^ Correspondence author: E-mail: guittarj@msu.edu
 
@@ -159,10 +157,12 @@ x <- bind_cols(x[, c(1:10)], x[, c(11:ncol(x))[colSums(x[,c(11:ncol(x))]) > 0]])
 x_unrarified <- x
 
 #rarefy to 5000
-tmp <- x[,c(11:ncol(x))]
-tmp <- tmp[rowSums(tmp) >= 5000,]
-tmp <- rrarefy(tmp, 5000)
-x <- bind_cols(x[, c(1:10)], as.data.frame(tmp))
+if (FALSE) {
+  tmp <- x[,c(11:ncol(x))]
+  tmp <- tmp[rowSums(tmp) >= 5000,]
+  tmp <- rrarefy(tmp, 5000)
+  x <- bind_cols(x[, c(1:10)], as.data.frame(tmp))
+}
 
 #create wide table for distance calculations
 x <- x %>%
@@ -206,6 +206,8 @@ x <- x %>%
 #create wide version
 traits <- filter(traits, otu %in% x$otu)
 traits_wide <- spread(traits, trait, val, fill = NA)
+traits_wide_scaled <- data.frame(otu = traits_wide$otu, sapply(traits_wide[, -1], scale))
+traits_wide_scaled <- select(traits_wide_scaled, -Length, -B_vitamins, -Temp_optimum)
 tax <- filter(tax, otu %in% x$otu)
 
 #set up phyloseq object for UniFrac distances.
@@ -284,7 +286,7 @@ p2 <- j %>%
   geom_text(aes(label = label), color = 'black', na.rm=TRUE) +
   scale_color_manual(values = c('black','red')) +
   scale_fill_manual(values = c('black','red')) +
-  facet_grid(Pair~Abx) + 
+  facet_wrap(~Mouse) + 
   th
 
 plot_it(p1, name = 'figPCoAPaired', dir = image_dir, width = 7, height = 8)
@@ -369,15 +371,14 @@ p1
 
 j <- x %>%
   group_by(Mouse, Hour) %>%
-  mutate(rich = length(unique(otu[abun > 0]))) %>%
-  group_by(Mouse, Hour, Abx, Cohoused, Dose, Pair, rich) %>%
+  left_join(tax[, c('otu','Genus','Species')], by = 'otu') %>%
+  mutate(rich_spp = length(unique(paste(Genus, Species)[abun > 0 & Species != 'unclassified'])),
+         rich = length(unique(otu[abun > 0]))) %>%
+  group_by(Mouse, Hour, Abx, Cohoused, Dose, Pair, rich, rich_spp) %>%
   do(shannon = diversity(spread(select(., otu, abun), otu, abun))) %>%
   mutate(shannon_val = shannon[[1]])
 
-#must fix screwy data!!! (when I paste mouse, abx, cohoused, there are some unexpected combinations)
 j <- j %>%
-  group_by(Mouse, Abx, Cohoused) %>%
-  filter(length(shannon_val) > 1) %>%
   ungroup() %>%
   mutate(
     evenness = shannon_val / log(rich),
@@ -414,9 +415,10 @@ p <- j %>%
     stat_smooth() +
     scale_color_manual(values = c('red','black')) +
     geom_rect(aes(xmin = 0, xmax = 120, ymin = -Inf, ymax = Inf), alpha = 0.3, fill = 'red', color = NA, data = j %>% group_by(Mouse) %>% filter(row_number() == 1 & Abx == 'Abx')) + 
+    geom_hline(yintercept = 0) +
     facet_wrap(~Mouse, ncol = 3) +
     labs(x = 'Hour', y = 'OTU richness') +
-    th
+    theme_bw()
 
 plot_it(p, name = 'figRichOverTime', dir = image_dir, width = 6, height = 8)
 
@@ -460,30 +462,9 @@ p
 #I am assuming that OTUs that are absent from a given mouse in the last three samples collected during antibiotic dosing (i.e., at hours 63, 73 and 97) are not in the mouse. This window can be tweaked.
 
 #set the window. The edges are included.
-window0 <- 63 
+window0 <- 119 
 window1 <- 120
 
-j <- x %>%
-  group_by(Mouse, Abx, Pair, otu) %>%
-  summarise(
-    abunPre = if (unique(Abx) == 'Y') sum(abun[Hour <= window0]) else NA,
-    abun0 = if (unique(Abx) == 'Y') sum(abun[Hour >= window0 & Hour <= window1]) else sum(abun[Hour < window1]),
-    abun1 = sum(abun[Hour > window1]),
-    statusAB = if (!is.na(abunPre) & abunPre == 0 & abun0 == 0) 'absent' else 'persistent',
-    statusAB = if (!is.na(abunPre) & abunPre > 0 & abun0 == 0) 'extinct' else statusAB,
-    ETD = if (statusAB == 'extinct') max(Hour[Hour <= window0 & abun > 0]) else NA,
-    ETD = if (statusAB == 'persistent') Inf else ETD,
-    status0 = if (abun0 > 0) 'present' else 'absent',
-    status1 = if (sum(abun[Hour > window1] > 0)) 'present' else 'absent',
-    status = if (status0 == 'absent' & status1 == 'absent') 'absent' else 'persistent',
-    status = if (status0 == 'absent' & status1 == 'present') 'immigrant' else status,
-    status = if (status0 == 'present' & status1 == 'absent') 'extinct' else status,
-    ETA = if (status == 'immigrant') min(Hour[Hour > 97 & abun > 0]) else NA) %>%
-  group_by(Pair, otu) %>%
-  mutate(
-    abun_pair = ifelse(!is.na(Pair) & Abx == 'Y', abun0[Abx == 'N'], NA),
-    abun_pair = ifelse(!is.na(Pair) & Abx == 'N', abun0[Abx == 'Y'], abun_pair))
-    
 j <- x %>%
   group_by(Mouse, Abx, Pair, otu) %>%
   summarise(
@@ -491,6 +472,8 @@ j <- x %>%
     abun1 = sum(abun[Hour >= window0 & Hour <= window1]),
     abun01 = abun0 + abun1,
     abun2 = sum(abun[Hour > window1]),
+    abun_final = if (312 %in% Hour) abun[Hour == 312]
+                   else NA,
     status_treatment = if (abun01 == 0) 'absent' 
                          else if (abun0 > 0 & abun1 == 0) 'extinct' 
                            else 'persistent',
@@ -512,14 +495,14 @@ j <- x %>%
     abun_pair = ifelse(!is.na(Pair) & Abx == 'N', abun01[Abx == 'Y'], abun_pair))
 
 p <- j %>% 
-  filter(status_recovery == 'immigrant' & Abx == 'Y' & abun_pair > 0) %>%
+  filter(status_recovery == 'immigrant' & Abx == 'Y') %>%
   mutate(time_to_arrival = ETA - 120) %>%
-  ggplot(aes(x = abun_pair, y = time_to_arrival)) + 
+  ggplot(aes(x = abun_pair + 1, y = time_to_arrival)) + 
     geom_jitter(alpha = 0.25, color = 'red', height = 5, width = 0) + 
     scale_x_log10() + 
     stat_smooth(color = 'black', method = 'lm') +
     stat_smooth(color = 'black', lty = 3) +
-    labs(x = "OTU relative abundance in cohoused control mouse", y = 'Hours before OTU arrival in Abx treated mouse') +
+    labs(x = "OTU relative abundance in cohoused control mouse + 1", y = 'Hours before OTU arrival in Abx treated mouse') +
     th
 
 plot_it(p, name = 'figPropPressure', dir = image_dir, width = 6.5, height = 5)
@@ -533,6 +516,7 @@ p
 `r pagebreak` ![](images\\figPropPressure.png)
 
 **(ref:figPropPressure):** A test of the potential role of mass effects. The hypothesis is that, all else being equal, the abundance of a taxon in the regional pool (i.e., the cohoused mouse) is going to correlate positively with time to arrival (i.e., successful colonization) in the treated mouse. This hypothesis is supported. However, we can't be sure if the hypothesis is true because the taxa that are more abundant taxa in the control mouse may simply be better suited for the gut environment, and thus are faster to colonize the antibiotic-treated mouse. So, the analysis has it's limitations, but I still think it's worth noting.
+
 
 ```{r, include = FALSE}
 
@@ -766,7 +750,7 @@ p
 
 ```{r, include = FALSE}
 
-iwant <- c('Obligate_anaerobe','Sporulation')
+iwant <- c('Obligate_anaerobe','Sporulation', 'Copies_16S', 'Gene_number','Motility')
 
 tmp <- x %>%
   left_join(traits_wide[ ,c('otu', iwant)], by = 'otu') %>%
@@ -896,6 +880,511 @@ p
 
 **(ref:figCoverage):** 
 Unknown trait data were inferred by averaging trait values over descending subtrees in the greengenes phylogeny. That is, for each unknown trait value, the predicted value was set to the arithmetic average state of all tips descending from that node. On the x-axis, S = Species, G = Genus, F = Family, O = Order, C = Class. Missing trait data for three traits (the functional potential to form biofilms, obgligate anaerobe status, and Gram-positive status) were inferred for all OTUs in the greengenes phylogeny in Ward et al. 2017, and are therefore not reported in this figure.
+
+```{r, include = FALSE}
+
+p <- traits %>% 
+  left_join(tax, by = 'otu') %>% 
+  group_by(trait) %>% 
+  arrange(val) %>% 
+  mutate(
+    rank = seq_along(val), 
+    Enterobacteriaceae = Family == 'Enterobacteriaceae') %>% 
+  ggplot(aes(x = rank, y = val, color = Enterobacteriaceae)) + 
+    geom_point(aes(size = Enterobacteriaceae)) + 
+    facet_wrap(~trait, scales = 'free') + 
+    scale_color_manual(values = c('black','red')) + 
+    th
+
+plot_it(p, name = 'figEnteroTraits', dir = image_dir, width = 6, height = 5)
+
+p
+
+```
+
+(ref:figEnteroTraits) Figure `r refs$figEnteroTraits`
+
+`r pagebreak` ![](images\\figEnteroTraits.png)
+
+**(ref:figEnteroTraits):** 
+
+```{r, include = FALSE}
+
+j <- x %>%
+  group_by(Mouse) %>%
+  filter(abun > 0) %>%
+  filter(Cohoused != 'dead') %>%
+  group_by(Mouse, Hour) %>%
+  mutate(rich = length(unique(otu))) %>%
+  group_by(Mouse) %>%
+  mutate(
+    cum_rich = as.numeric(factor(otu, levels = unique(otu))),
+    Abx = ifelse(Abx == 'Y', 'Abx', 'No abx'),
+    Cohoused = ifelse(Cohoused == 'Y', 'Cohoused', 'Solitary')) %>%
+  group_by(Mouse, Hour, Abx, Cohoused, rich) %>%
+  summarise(cum_rich = max(cum_rich)) %>%
+  group_by(Mouse) %>%
+  mutate(new_rich = c(cum_rich[1], cum_rich[2:length(cum_rich)] -
+                                   cum_rich[1:length(cum_rich) -1]))
+
+
+p <- ggplot(j, aes(x = Hour, y = cum_rich, color = Abx)) +
+    geom_rect(aes(xmin = 0, xmax = 120, ymin = -Inf, ymax = Inf), alpha = 0.3, fill = 'red', color = NA, data = filter(ungroup(j), row_number() == 1 & Abx == 'Abx')) + 
+    geom_vline(xintercept = 120) +
+    geom_vline(xintercept = 0) +
+    #geom_line(aes(group = Mouse, lty = Cohoused)) +
+    geom_point(data = filter(j, cum_rich < 2300)) +
+    geom_point(data = filter(j, cum_rich > 2300), shape = 1) +
+    stat_smooth(aes(group =  Mouse, lty = Cohoused), se = FALSE,
+                data = filter(j, cum_rich < 2300)) +
+    scale_color_manual(values = c('red','black')) +
+    #facet_wrap(~Abx) +
+    expand_limits(y = 0) +
+    th +
+    labs(x = "Hour", y = 'Cumulative no. of unique OTUs encountered')
+
+plot_it(p, name = 'figCumOTUS', dir = image_dir, width = 6, height = 5)
+
+p
+
+```
+
+(ref:figCumOTUS) Figure `r refs$figCumOTUS`
+
+`r pagebreak` ![](images\\figCumOTUS.png)
+
+**(ref:figCumOTUS):** 
+
+```{r, include = FALSE}
+
+p <- ggplot(j, aes(x = Hour, y = cum_rich, color = Abx, lty = Cohoused)) +
+    geom_point(alpha = 0.2, data = filter(j, cum_rich < 2300)) +
+    geom_point(data = filter(j, cum_rich > 2300)) +
+    stat_smooth(se = FALSE, data = filter(j, cum_rich < 2300)) + 
+    th +
+    scale_color_manual(values = c('red','black')) +
+    expand_limits(y = 0)
+  
+plot_it(p, name = 'figCumOtusByTreat', dir = image_dir, width = 6, height = 5)
+
+p
+
+```
+
+(ref:figCumOtusByTreat) Figure `r refs$figCumOtusByTreat`
+
+`r pagebreak` ![](images\\figCumOtusByTreat.png)
+
+**(ref:figCumOtusByTreat):** 
+
+```{r, include = FALSE}
+
+
+p <- j %>% 
+  group_by(Mouse, Abx, Cohoused, Hour) %>%
+  summarise(rich = unique(rich)) %>%
+  ggplot(aes(x = Hour, y = rich, color = Abx, lty = Cohoused)) +
+    geom_point(alpha = 0.2) +
+    stat_smooth() + 
+    scale_color_manual(values = c('red','black')) +
+    th +
+    labs(y = 'Instantaneous richness')
+
+
+  
+plot_it(p, name = 'figRichByTreat', dir = image_dir, width = 6, height = 5)
+
+p
+
+```
+
+(ref:figRichByTreat) Figure `r refs$figRichByTreat`
+
+`r pagebreak` ![](images\\figRichByTreat.png)
+
+**(ref:figRichByTreat):** 
+
+```{r, include = FALSE}
+
+p <- j %>% 
+  ggplot(aes(x = Hour, y = new_rich, color = Abx, lty = Cohoused)) +
+    geom_point(alpha = 0.2, data = filter(j, new_rich > 0 & (new_rich < 200 | Hour < 200))) +
+    geom_point(size = 2, data = filter(j, new_rich > 200 & Hour > 200)) +
+    scale_color_manual(values = c('red','black')) +
+    stat_smooth(se = FALSE, data = filter(j, new_rich < 200 | Hour < 200)) + 
+    th +
+    labs(y = 'No. new OTUs encountered')
+
+#j %>% 
+#  group_by(Mouse) %>%
+#  filter(Hour %in% c(0,23,63,120,240,312)) %>%
+#  group_by(Mouse, Abx, Cohoused, Hour) %>%
+#  summarise(cum_rich = max(cum_rich)) %>%
+#  ggplot(aes(x = factor(Hour), y = cum_rich, color = Abx)) +
+#    geom_boxplot(position = 'dodge') +
+#    facet_wrap(~Cohoused) +
+#    th
+
+plot_it(p, name = 'figNewRichByTreat', dir = image_dir, width = 6, height = 5)
+
+p
+
+```
+
+(ref:figNewRichByTreat) Figure `r refs$figNewRichByTreat`
+
+`r pagebreak` ![](images\\figNewRichByTreat.png)
+
+**(ref:figNewRichByTreat):** 
+
+```{r, include = FALSE}
+
+j <- x %>% 
+  left_join(tax, by = 'otu') %>% 
+  filter(Family == 'Enterobacteriaceae') %>%
+  group_by(Mouse) %>%
+  filter(abun > 0) %>%
+  mutate(Cumulative = cummax(as.numeric(factor(otu, levels = unique(otu))))) %>%
+  mutate(Abx = factor(ifelse(Abx == 'Y','Abx', 'No abx'), levels = c('No abx', 'Abx'))) %>%
+  group_by(Mouse, Abx, Hour) %>%  
+  summarise(
+    Instantaneous = length(otu), 
+    Cumulative = max(Cumulative)) %>%
+  gather(var, val, Instantaneous, Cumulative) %>%
+  mutate(var = factor(var, unique(var)))
+  
+p <- ggplot(j, aes(x = Hour, y = val, color = Abx)) + 
+  geom_rect(aes(xmin = 0, xmax = 120, ymin = -Inf, ymax = Inf), alpha = 0.3, fill = 'red', 
+            color = NA, data = filter(group_by(j, var), row_number() == 1 & Abx == 'Abx')) + 
+  geom_vline(xintercept = 0) +
+  geom_hline(yintercept = 0) +
+  #geom_line(aes(group = Mouse)) + 
+  geom_point(alpha = 0.2) +
+  stat_smooth(aes(group = Mouse), se = FALSE) +
+  scale_color_manual(values = c('black','red'), name = '') +
+  labs(y = "Enterobacteriaceae OTU richness") +
+  facet_wrap(~var) +
+  th
+
+plot_it(p, name = 'figEntRichHour', dir = image_dir, width = 6, height = 5)
+
+p
+
+
+```
+
+(ref:figEntRichHour) Figure `r refs$figEntRichHour`
+
+`r pagebreak` ![](images\\figEntRichHour.png)
+
+**(ref:figEntRichHour):** 
+
+
+```{r, include = FALSE}
+
+j <- x %>%
+  left_join(tax, by = 'otu') %>%
+  filter(Abx == 'Y') %>%
+  mutate(abun = abun/sum(abun),
+         Mouse = paste(Mouse, Cohoused)) %>%
+  group_by(Family) %>%
+  mutate(fam_abun = sum(abun)) %>%
+  ungroup() %>%
+  filter(fam_abun > 0.02) %>%
+  group_by(Mouse, Family, Hour) %>%
+  summarise(abun = sum(abun)) %>%
+  ungroup()
+  
+p <- ggplot(j, aes(x = Hour, y = abun, color = Family)) +
+  geom_rect(aes(xmin = 0, xmax = 120, ymin = -Inf, ymax = Inf), alpha = 0.15, fill = 'red', color = NA, data = j %>% filter(row_number() == 1)) + 
+  geom_point() +
+  geom_smooth(se = FALSE) +
+  #facet_wrap(~Mouse) + 
+  theme(legend.position = 'bottom',
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.background = element_blank())
+
+plot_it(p, name = 'figFamilyPatterns', dir = image_dir, width = 6, height = 5)
+
+p
+
+
+```
+
+(ref:figFamilyPatterns) Figure `r refs$figFamilyPatterns`
+
+`r pagebreak` ![](images\\figFamilyPatterns.png)
+
+**(ref:figFamilyPatterns):** 
+
+```{r, include = FALSE}
+
+j <- x %>%
+  filter(Abx == 'Y') %>%
+  group_by(Mouse, otu) %>%
+  filter(abun[Hour == 0] > 0) %>%
+  summarise(abx_response = ifelse(abun[Hour == 120] > 0, 1, 0)) %>%
+  ungroup() %>%
+  left_join(traits_wide_scaled, by = 'otu') %>%
+  select(-Mouse, -otu)
+
+m <- lm(abx_response ~ ., data = j)
+
+tmp <- summary(m)$coef %>%
+  as.data.frame() %>%
+  do(data.frame(var = row.names(.), .)) %>%
+  rename(SE = Std..Error, p.value = Pr...t..) %>%
+  filter(var != "(Intercept)") %>%
+  mutate(var = factor(var, unique(var[order(t.value)])))
+
+p <- ggplot(tmp, aes(x = var, y = Estimate, color = p.value < 0.05)) +
+  geom_hline(yintercept = 0) +
+  geom_errorbar(aes(ymin = Estimate - SE, ymax = Estimate + SE), width = 0.3) +
+  geom_point() +
+  labs(x = '', y = 'Mean change in probability of persisting (Y/N) during Abx treatment') +
+  coord_flip() +
+  th
+
+plot_it(p, name = 'figTraitsDuringAbxBinary', dir = image_dir, width = 6, height = 5)
+
+p
+
+
+```
+
+(ref:figTraitsDuringAbxBinary) Figure `r refs$figTraitsDuringAbxBinary`
+
+`r pagebreak` ![](images\\figTraitsDuringAbxBinary.png)
+
+**(ref:figTraitsDuringAbxBinary):** 
+
+
+```{r, include = FALSE}
+
+j <- x %>%
+  filter(Abx == 'Y') %>%
+  group_by(Mouse, otu) %>%
+  filter(abun[Hour == 0] > 0 | abun[Hour == 120] > 0) %>%
+  summarise(delta_rel_abun = abun[Hour == 120] - abun[Hour == 0]) %>%
+  ungroup() %>%
+  left_join(traits_wide_scaled) %>%
+  select(-Mouse, -otu)
+
+m <- lm(delta_rel_abun / 5000 ~ ., data = j)
+
+tmp <- summary(m)$coef %>%
+  as.data.frame() %>%
+  do(data.frame(var = row.names(.), .)) %>%
+  rename(SE = Std..Error, p.value = Pr...t..) %>%
+  filter(var != "(Intercept)") %>%
+  mutate(var = factor(var, unique(var[order(t.value)])))
+
+p <- ggplot(tmp, aes(x = var, y = Estimate, color = p.value < 0.05)) +
+  geom_hline(yintercept = 0) +
+  geom_errorbar(aes(ymin = Estimate - SE, ymax = Estimate + SE), width = 0.3) +
+  geom_point() +
+  labs(y = 'Mean Change in rel. abun. over Abx treatment', x = '') +
+  coord_flip() +
+  th
+
+plot_it(p, name = 'figTraitsDuringAbxContinuous', dir = image_dir, width = 6, height = 5)
+
+p
+
+
+```
+
+(ref:figTraitsDuringAbxContinuous) Figure `r refs$figTraitsDuringAbxContinuous`
+
+`r pagebreak` ![](images\\figTraitsDuringAbxContinuous.png)
+
+**(ref:figTraitsDuringAbxContinuous):** 
+
+```{r, include = FALSE}
+
+j <- x %>%
+  filter(!is.na(Pair)) %>%
+  group_by(Pair, otu) %>%
+  mutate(Control_abun = sum(abun[Abx == 'N']) / length(unique(Hour))) %>%
+  filter(Abx == 'Y') %>%
+  group_by(Mouse, otu, Control_abun) %>%
+  filter(abun[Hour == 120] > 0) %>%
+  summarise(abx_response = ifelse(abun[Hour == max(Hour)] > 0, 1, 0)) %>%
+  ungroup() %>%
+  left_join(traits_wide_scaled, by = 'otu') %>%
+  mutate(Control_abun = scale(Control_abun)) %>%
+  select(-Mouse, -otu)
+
+m <- lm(abx_response ~ ., data = j)
+
+tmp <- summary(m)$coef %>%
+  as.data.frame() %>%
+  do(data.frame(var = row.names(.), .)) %>%
+  rename(SE = Std..Error, p.value = Pr...t..) %>%
+  filter(var != "(Intercept)") %>%
+  mutate(var = factor(var, unique(var[order(Estimate)])))
+
+p <- ggplot(tmp, aes(x = var, y = Estimate, color = p.value < 0.05)) +
+  geom_hline(yintercept = 0) +
+  geom_errorbar(aes(ymin = Estimate - SE, ymax = Estimate + SE), width = 0.3) +
+  geom_point() +
+  labs(x = '', y = 'Mean change in probability of persisting (Y/N) over Abx recovery') +
+  coord_flip() +
+  th
+
+plot_it(p, name = 'figTraitsAfterAbxBinary', dir = image_dir, width = 6, height = 5)
+
+p
+
+
+```
+
+(ref:figTraitsAfterAbxBinary) Figure `r refs$figTraitsAfterAbxBinary`
+
+`r pagebreak` ![](images\\figTraitsAfterAbxBinary.png)
+
+**(ref:figTraitsAfterAbxBinary):** 
+
+```{r, include = FALSE}
+
+j <- x %>%
+  filter(!is.na(Pair)) %>%
+  group_by(Pair, otu) %>%
+  mutate(Control_abun = sum(abun[Abx == 'N']) / length(unique(Hour))) %>%
+  filter(Abx == 'Y') %>%
+  group_by(Mouse, otu, Control_abun) %>%
+  filter(abun[Hour == 120] > 0) %>%
+  summarise(delta_rel_abun = abun[Hour == 120] - abun[Hour == max(Hour)]) %>%
+  ungroup() %>%
+  left_join(traits_wide_scaled, by = 'otu') %>%
+  mutate(Control_abun = scale(Control_abun)) %>%
+  select(-Mouse, -otu)
+
+m <- lm(delta_rel_abun ~ ., data = j)
+
+tmp <- summary(m)$coef %>%
+  as.data.frame() %>%
+  do(data.frame(var = row.names(.), .)) %>%
+  rename(SE = Std..Error, p.value = Pr...t..) %>%
+  filter(var != "(Intercept)") %>%
+  mutate(var = factor(var, unique(var[order(Estimate)])))
+
+p <- ggplot(tmp, aes(x = var, y = Estimate, color = p.value < 0.05)) +
+  geom_hline(yintercept = 0) +
+  geom_errorbar(aes(ymin = Estimate - SE, ymax = Estimate + SE), width = 0.3) +
+  geom_point() +
+  labs(y = 'Mean Change in rel. abun. over Abx recovery', x = '') +
+  coord_flip() +
+  th
+
+plot_it(p, name = 'figTraitsAfterAbxContinuous', dir = image_dir, width = 6, height = 5)
+
+p
+
+
+```
+
+(ref:figTraitsAfterAbxContinuous) Figure `r refs$figTraitsAfterAbxContinuous`
+
+`r pagebreak` ![](images\\figTraitsAfterAbxContinuous.png)
+
+**(ref:figTraitsAfterAbxContinuous):** 
+
+
+```{r, include = FALSE}
+
+j <- x %>%
+  filter(!is.na(Pair)) %>%
+  group_by(Pair, otu) %>%
+  mutate(Control_abun = sum(abun[Abx == 'N']) / length(unique(Hour))) %>%
+  group_by(Mouse, otu, Control_abun) %>%
+  summarise(
+    Initial_abun = abun[Hour == 0],
+    End_abx_abun = abun[Hour == 120],
+    final_abun = abun[Hour == max(Hour)],
+    Persistence = ifelse(abun[Hour == 0] > 0 & abun[Hour == 120] > 0, 1, 0),
+    Persistence = ifelse(sum(abun[Hour %in% c(0,120)]) == 0, NA, Persistence)) %>%
+  ungroup() %>%
+  mutate(Control_abun = scale(log10(Control_abun+1)),
+         Initial_abun = scale(log10(Initial_abun+1)),
+         End_abx_bun = scale(log10(End_abx_abun+1)),
+         Persistence = scale(Persistence)) %>%
+  select(-Mouse, -otu)
+
+  
+m <- lm(final_abun ~ ., data = j)
+
+tmp <- summary(m)$coef %>%
+  as.data.frame() %>%
+  do(data.frame(var = row.names(.), .)) %>%
+  rename(SE = Std..Error, p.value = Pr...t..) %>%
+  filter(var != "(Intercept)") %>%
+  mutate(var = factor(var, unique(var[order(Estimate)])))
+
+p <- ggplot(tmp, aes(x = var, y = Estimate, color = p.value < 0.05)) +
+  geom_hline(yintercept = 0) +
+  geom_errorbar(aes(ymin = Estimate - SE, ymax = Estimate + SE), width = 0.3) +
+  geom_point() +
+  labs(x = '', y = 'Predictors of post-recovery rel. abundance') +
+  coord_flip() +
+  th
+
+plot_it(p, name = 'figAbxPlusRecoveryPredictors', dir = image_dir, width = 6, height = 5)
+
+p
+
+
+```
+
+(ref:figAbxPlusRecoveryPredictors) Figure `r refs$figAbxPlusRecoveryPredictors`
+
+`r pagebreak` ![](images\\figAbxPlusRecoveryPredictors.png)
+
+**(ref:figAbxPlusRecoveryPredictors):** 
+
+
+```{r, include = FALSE}
+
+j <- x %>%
+  group_by(Mouse) %>%
+  filter(abun > 0) %>%
+  filter(Cohoused != 'dead') %>%
+  group_by(Mouse) %>%
+  mutate(
+    cum_rich = as.numeric(factor(otu, levels = unique(otu))),
+    Abx = ifelse(Abx == 'Y', 'Abx', 'No abx'),
+    Cohoused = ifelse(Cohoused == 'Y', 'Cohoused', 'Solitary')) %>%
+  group_by(Mouse, Hour, Abx, Cohoused) %>%
+  summarise(cum_rich = max(cum_rich))
+
+p <- ggplot(j, aes(x = Hour, y = cum_rich, color = Abx)) +
+    geom_rect(aes(xmin = 0, xmax = 120, ymin = -Inf, ymax = Inf), alpha = 0.3, fill = 'red', color = NA, data = filter(ungroup(j), row_number() == 1 & Abx == 'Abx')) + 
+    geom_vline(xintercept = 120) +
+    geom_vline(xintercept = 0) +
+    #geom_line(aes(group = Mouse, lty = Cohoused)) +
+    geom_point(data = filter(j, cum_rich < 2300)) +
+    geom_point(data = filter(j, cum_rich > 2300), shape = 1) +
+    stat_smooth(aes(group = Mouse, lty = Cohoused), se = FALSE, data = filter(j, cum_rich < 2300)) +
+    scale_color_manual(values = c('red','black')) +
+    facet_wrap(~Abx) +
+    expand_limits(y = 0) +
+    th +
+    labs(x = "Hour", y = 'Cumulative no. of unique OTUs encountered')
+
+plot_it(p, name = 'figCumulativeOTUs', dir = image_dir, width = 6, height = 5)
+
+p
+
+
+```
+
+(ref:figCumulativeOTUs) Figure `r refs$figCumulativeOTUs`
+
+`r pagebreak` ![](images\\figCumulativeOTUs.png)
+
+**(ref:figCumulativeOTUs):** 
+
 
 
 `r pagebreak` Works Cited
